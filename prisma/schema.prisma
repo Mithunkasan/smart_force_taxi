@@ -1,0 +1,240 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  TRANSPORT_MANAGER
+  DRIVER
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ASSIGNED
+  ON_TRIP
+  MAINTENANCE
+  BREAKDOWN
+}
+
+enum TripStatus {
+  PENDING
+  APPROVED
+  ASSIGNED
+  STARTED
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum VerificationStatus {
+  VERIFIED
+  MISMATCH
+  PENDING
+  REJECTED
+}
+
+model User {
+  id                String         @id @default(uuid())
+  email             String         @unique
+  password          String
+  name              String
+  role              Role           @default(DRIVER)
+  employeeId        String         @unique
+  phone             String?
+  licenseNumber     String?
+  licenseExpiry     DateTime?
+  experience        Int?           // Years of experience
+  shift             String?        // Morning, Evening, Night
+  emergencyContact  String?
+  
+  // Relations
+  assignedVehicles  Vehicle[]      @relation("CurrentDriver")
+  trips             Trip[]         @relation("DriverTrips")
+  fuelLogs          FuelLog[]
+  attendance        Attendance[]
+  verifications     AdminVerification[] @relation("VerifiedBy")
+  notifications     Notification[]
+  
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([role])
+}
+
+model Vehicle {
+  id                 String         @id @default(uuid())
+  vehicleNumber      String         @unique
+  name               String
+  brand              String
+  model              String
+  year               Int
+  seatingCapacity    Int
+  registrationNumber String         @unique
+  insuranceExpiry    DateTime
+  fcExpiry           DateTime       // Fitness Certificate
+  pollutionExpiry    DateTime       // Pollution Certificate
+  serviceDueDate     DateTime
+  odometer           Int
+  status             VehicleStatus  @default(AVAILABLE)
+  
+  // Relations
+  currentDriverId    String?
+  currentDriver      User?          @relation("CurrentDriver", fields: [currentDriverId], references: [id], onDelete: SetNull)
+  trips              Trip[]
+  maintenances       Maintenance[]
+  fuelLogs           FuelLog[]
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([status])
+}
+
+model Trip {
+  id              String       @id @default(uuid())
+  tripNumber      String       @unique
+  requestedBy     String
+  department      String
+  pickup          String
+  destination     String
+  startTime       DateTime
+  endTime         DateTime
+  purpose         String
+  priority        Priority     @default(MEDIUM)
+  status          TripStatus   @default(PENDING)
+  notes           String?
+  
+  // Relations
+  driverId        String?
+  driver          User?        @relation("DriverTrips", fields: [driverId], references: [id], onDelete: SetNull)
+  vehicleId       String
+  vehicle         Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  
+  closing         TripClosing?
+  parking         ParkingLocation?
+  conditionReport VehicleConditionReport?
+  verification    AdminVerification?
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([status])
+  @@index([driverId])
+  @@index([vehicleId])
+}
+
+model TripClosing {
+  id               String   @id @default(uuid())
+  tripId           String   @unique
+  trip             Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  startingOdometer Int
+  endingOdometer   Int
+  distanceTravelled Int
+  tripAmount       Float    @default(0.0)
+  fuelExpense      Float    @default(0.0)
+  tollExpense      Float    @default(0.0)
+  parkingCharges   Float    @default(0.0)
+  otherExpenses    Float    @default(0.0)
+  billsUrl         String?  // Saved locally or mock path
+  receiptsUrl      String?  // Saved locally or mock path
+  remarks          String?
+  
+  createdAt        DateTime @default(now())
+}
+
+model ParkingLocation {
+  id              String   @id @default(uuid())
+  tripId          String   @unique
+  trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  location        String
+  address         String
+  landmark        String?
+  googleMapsLink  String?
+  parkingTime     DateTime @default(now())
+  vehiclePhotoUrl String?
+}
+
+model VehicleConditionReport {
+  id                String   @id @default(uuid())
+  tripId            String   @unique
+  trip              Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  fuelLevel         String   // E, 1/4, 1/2, 3/4, F
+  tyreCondition     String   // Good, Worn, Needs Replacement
+  interiorCondition String   // Clean, Needs Cleaning, Damaged
+  exteriorCondition String   // Good, Scratches, Dents
+  damagePhotosUrl   String?
+  remarks           String?
+}
+
+model AdminVerification {
+  id              String             @id @default(uuid())
+  tripId          String             @unique
+  trip            Trip               @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  status          VerificationStatus @default(PENDING)
+  remarks         String?
+  verifiedById    String?
+  verifiedBy      User?              @relation("VerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+  
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+model Maintenance {
+  id             String    @id @default(uuid())
+  vehicleId      String
+  vehicle        Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  serviceHistory String
+  nextServiceDate DateTime
+  oilChangeDone  Boolean   @default(false)
+  tyresChanged   Boolean   @default(false)
+  batteryChanged Boolean   @default(false)
+  repairCost     Float     @default(0.0)
+  garageDetails  String
+  remindersSent  Boolean   @default(false)
+  
+  createdAt      DateTime  @default(now())
+}
+
+model FuelLog {
+  id        String   @id @default(uuid())
+  date      DateTime @default(now())
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driverId  String
+  driver    User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  quantity  Float    // Liters
+  cost      Float    // Price
+  mileage   Float    // Calculated mileage
+}
+
+model Attendance {
+  id           String    @id @default(uuid())
+  driverId     String
+  driver       User      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  checkIn      DateTime  @default(now())
+  checkOut     DateTime?
+  workingHours Float     @default(0.0)
+  overtime     Float     @default(0.0)
+  
+  createdAt    DateTime  @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  type      String   // VEHICLE_ASSIGNMENT, TRIP_REMINDER, etc.
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
