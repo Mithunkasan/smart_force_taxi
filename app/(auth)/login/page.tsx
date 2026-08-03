@@ -172,15 +172,11 @@ export default function LoginPage() {
 
           {/* Quick Access Info for Testing */}
           <div className="mt-6 border-t border-border pt-4 text-center">
-            <p className="text-[11px] text-muted-foreground">Demo Accounts:</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground bg-muted/40 p-2.5 rounded-lg border border-border/40">
+            <p className="text-[11px] text-muted-foreground">Admin Credentials:</p>
+            <div className="mt-2 text-[10px] text-muted-foreground bg-muted/40 p-2.5 rounded-lg border border-border/40">
               <div>
                 <span className="font-semibold block text-foreground">Admin Portal</span>
-                admin@fleet.com<br />adminpassword
-              </div>
-              <div>
-                <span className="font-semibold block text-foreground">Driver Portal</span>
-                john@driver.com<br />driverpassword
+                admin@mattengg.com<br />Matt@4321admin
               </div>
             </div>
           </div>
