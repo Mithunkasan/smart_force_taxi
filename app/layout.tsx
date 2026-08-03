@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/layout/theme-provider";
@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   keywords: ["fleet management", "logistics", "trip closing", "vehicle condition", "driver attendance", "fuel log"],
   authors: [{ name: "Smart Force Taxi" }],
   metadataBase: new URL("http://localhost:3000"),
+  manifest: "/manifest.json",
   openGraph: {
     title: "Smart Force Taxi | Premium Corporate Fleet & Taxi Service",
     description: "Enterprise-grade Fleet Management System for vehicle tracking, driver scheduling, and maintenance logging.",
@@ -34,6 +35,10 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({
