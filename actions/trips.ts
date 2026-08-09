@@ -4,72 +4,19 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { TripStatus, Priority } from "@prisma/client";
 
-// Validate driver or vehicle scheduling overlap
-async function checkOverlap(
-  driverId: string | null,
-  vehicleId: string,
-  startTime: Date,
-  endTime: Date,
-  excludeTripId?: string
-) {
-  // 1. Check Driver Overlap
-  if (driverId) {
-    const driverOverlap = await db.trip.findFirst({
-      where: {
-        id: excludeTripId ? { not: excludeTripId } : undefined,
-        driverId,
-        status: { not: "CANCELLED" },
-        startTime: { lt: endTime },
-        endTime: { gt: startTime },
-      },
-    });
-
-    if (driverOverlap) {
-      return {
-        overlap: true,
-        message: `Driver is already assigned to active/scheduled Trip ${driverOverlap.tripNumber} between ${new Date(
-          driverOverlap.startTime
-        ).toLocaleString()} and ${new Date(driverOverlap.endTime).toLocaleString()}.`,
-      };
-    }
-  }
-
-  // 2. Check Vehicle Overlap
-  const vehicleOverlap = await db.trip.findFirst({
-    where: {
-      id: excludeTripId ? { not: excludeTripId } : undefined,
-      vehicleId,
-      status: { not: "CANCELLED" },
-      startTime: { lt: endTime },
-      endTime: { gt: startTime },
-    },
-  });
-
-  if (vehicleOverlap) {
-    return {
-      overlap: true,
-      message: `Vehicle is already assigned to active/scheduled Trip ${vehicleOverlap.tripNumber} between ${new Date(
-        vehicleOverlap.startTime
-      ).toLocaleString()} and ${new Date(vehicleOverlap.endTime).toLocaleString()}.`,
-    };
-  }
-
-  return { overlap: false };
-}
-
 export async function createTrip(data: {
   tripNumber: string;
-  requestedBy: string;
-  department: string;
   pickup: string;
   destination: string;
   startTime: string;
   endTime: string;
   purpose: string;
   priority: Priority;
-  driverId?: string;
+  driverId: string;
   vehicleId: string;
   notes?: string;
+  startGpsUrl?: string;
+  destinationGpsUrl?: string;
 }) {
   try {
     const start = new Date(data.startTime);
@@ -79,33 +26,102 @@ export async function createTrip(data: {
       return { error: "End time must be after start time." };
     }
 
-    // Overlap validation check (skip driver check at creation)
-    const check = await checkOverlap(null, data.vehicleId, start, end);
-    if (check.overlap) {
-      return { error: check.message };
+    // Validate driver status
+    const driver = await db.user.findUnique({
+      where: { id: data.driverId },
+    });
+
+    if (!driver || driver.status === "OFFLINE") {
+      return { error: "Selected driver is currently offline or has not started their shift." };
     }
 
-    // Create trip
-    await db.trip.create({
-      data: {
-        tripNumber: data.tripNumber,
-        requestedBy: data.requestedBy,
-        department: data.department,
-        pickup: data.pickup,
-        destination: data.destination,
-        startTime: start,
-        endTime: end,
-        purpose: data.purpose,
-        priority: data.priority,
-        status: TripStatus.PENDING,
-        driverId: null,
-        vehicleId: data.vehicleId,
-        notes: data.notes,
+    // Verify driver does not already have an active/assigned work
+    const activeTrip = await db.trip.findFirst({
+      where: {
+        driverId: data.driverId,
+        status: {
+          in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
+        },
       },
+    });
+
+    if (activeTrip) {
+      return { error: "Selected driver already has an active work assignment." };
+    }
+
+    // Validate vehicle availability
+    const vehicle = await db.vehicle.findUnique({
+      where: { id: data.vehicleId },
+    });
+
+    if (!vehicle || (vehicle.status !== "AVAILABLE" && vehicle.currentDriverId !== data.driverId)) {
+      return { error: "Selected vehicle is not available (must be AVAILABLE or already picked by driver)." };
+    }
+
+    // Create the trip in ASSIGNED status (assigned by ADMIN)
+    await db.$transaction(async (tx) => {
+      await tx.trip.create({
+        data: {
+          tripNumber: data.tripNumber,
+          pickup: data.pickup,
+          destination: data.destination,
+          startTime: start,
+          endTime: end,
+          purpose: data.purpose,
+          priority: data.priority,
+          status: "ASSIGNED",
+          notes: data.notes || null,
+          startGpsUrl: data.startGpsUrl || null,
+          destinationGpsUrl: data.destinationGpsUrl || null,
+          driverId: data.driverId,
+          vehicleId: data.vehicleId,
+          assignedBy: "ADMIN",
+          requestedBy: "ADMIN",
+          department: "Operations",
+        },
+      });
+
+      // Update vehicle to ASSIGNED to driver (if not already)
+      await tx.vehicle.update({
+        where: { id: data.vehicleId },
+        data: {
+          status: "ASSIGNED",
+          currentDriverId: data.driverId,
+        },
+      });
+
+      // Add a history record if not already assigned
+      const assignmentExists = await tx.carAssignment.findFirst({
+        where: {
+          driverId: data.driverId,
+          vehicleId: data.vehicleId,
+          releasedAt: null,
+        },
+      });
+
+      if (!assignmentExists) {
+        await tx.carAssignment.create({
+          data: {
+            driverId: data.driverId,
+            vehicleId: data.vehicleId,
+            assignedAt: new Date(),
+          },
+        });
+      }
+
+      // Notify the driver
+      await tx.notification.create({
+        data: {
+          userId: data.driverId,
+          message: `Admin assigned new work to you: ${data.pickup} to ${data.destination}. Please accept it on your dashboard.`,
+          type: "VEHICLE_ASSIGNMENT",
+        },
+      });
     });
 
     revalidatePath("/admin/trips");
     revalidatePath("/admin");
+    revalidatePath("/driver");
     return { success: true };
   } catch (error: any) {
     console.error("Create trip error:", error);
@@ -117,18 +133,18 @@ export async function updateTrip(
   id: string,
   data: {
     tripNumber: string;
-    requestedBy: string;
-    department: string;
     pickup: string;
     destination: string;
     startTime: string;
     endTime: string;
     purpose: string;
     priority: Priority;
-    driverId?: string | null;
+    driverId: string | null;
     vehicleId: string;
     status: TripStatus;
     notes?: string;
+    startGpsUrl?: string;
+    destinationGpsUrl?: string;
   }
 ) {
   try {
@@ -139,49 +155,69 @@ export async function updateTrip(
       return { error: "End time must be after start time." };
     }
 
-    // Validate overlap excluding the current trip itself
-    if (data.status !== "CANCELLED") {
-      const check = await checkOverlap(data.driverId || null, data.vehicleId, start, end, id);
-      if (check.overlap) {
-        return { error: check.message };
-      }
-    }
-
     // Update trip details
-    await db.trip.update({
-      where: { id },
-      data: {
-        tripNumber: data.tripNumber,
-        requestedBy: data.requestedBy,
-        department: data.department,
-        pickup: data.pickup,
-        destination: data.destination,
-        startTime: start,
-        endTime: end,
-        purpose: data.purpose,
-        priority: data.priority,
-        status: data.status,
-        driverId: data.driverId || null,
-        vehicleId: data.vehicleId,
-        notes: data.notes,
-      },
-    });
+    await db.$transaction(async (tx) => {
+      const oldTrip = await tx.trip.findUnique({
+        where: { id },
+      });
 
-    // If status changes to started or completed, update vehicle status as well
-    if (data.status === "STARTED") {
-      await db.vehicle.update({
-        where: { id: data.vehicleId },
-        data: { status: "ON_TRIP" },
+      await tx.trip.update({
+        where: { id },
+        data: {
+          tripNumber: data.tripNumber,
+          pickup: data.pickup,
+          destination: data.destination,
+          startTime: start,
+          endTime: end,
+          purpose: data.purpose,
+          priority: data.priority,
+          status: data.status,
+          driverId: data.driverId || null,
+          vehicleId: data.vehicleId,
+          notes: data.notes || null,
+          startGpsUrl: data.startGpsUrl || null,
+          destinationGpsUrl: data.destinationGpsUrl || null,
+        },
       });
-    } else if (data.status === "COMPLETED" || data.status === "CANCELLED") {
-      await db.vehicle.update({
-        where: { id: data.vehicleId },
-        data: { status: "AVAILABLE" },
-      });
-    }
+
+      // If status is changed by admin to CANCELLED or COMPLETED, manage vehicle status
+      if (data.status === "CANCELLED" || data.status === "COMPLETED") {
+        await tx.vehicle.update({
+          where: { id: data.vehicleId },
+          data: {
+            status: "AVAILABLE",
+            currentDriverId: null,
+          },
+        });
+
+        if (data.driverId) {
+          await tx.user.update({
+            where: { id: data.driverId },
+            data: { status: "AVAILABLE" },
+          });
+
+          // Close assignment
+          const activeAssignment = await tx.carAssignment.findFirst({
+            where: {
+              driverId: data.driverId,
+              vehicleId: data.vehicleId,
+              releasedAt: null,
+            },
+          });
+
+          if (activeAssignment) {
+            await tx.carAssignment.update({
+              where: { id: activeAssignment.id },
+              data: { releasedAt: new Date() },
+            });
+          }
+        }
+      }
+    });
 
     revalidatePath("/admin/trips");
     revalidatePath("/admin");
+    revalidatePath("/driver");
     return { success: true };
   } catch (error: any) {
     console.error("Update trip error:", error);
@@ -191,10 +227,53 @@ export async function updateTrip(
 
 export async function deleteTrip(id: string) {
   try {
-    await db.trip.delete({
-      where: { id },
+    await db.$transaction(async (tx) => {
+      const trip = await tx.trip.findUnique({
+        where: { id },
+      });
+
+      if (trip && trip.status !== "COMPLETED" && trip.status !== "CANCELLED") {
+        // Release vehicle
+        await tx.vehicle.update({
+          where: { id: trip.vehicleId },
+          data: {
+            status: "AVAILABLE",
+            currentDriverId: null,
+          },
+        });
+
+        if (trip.driverId) {
+          await tx.user.update({
+            where: { id: trip.driverId },
+            data: { status: "AVAILABLE" },
+          });
+
+          // Close active CarAssignment
+          const activeAssignment = await tx.carAssignment.findFirst({
+            where: {
+              driverId: trip.driverId,
+              vehicleId: trip.vehicleId,
+              releasedAt: null,
+            },
+          });
+
+          if (activeAssignment) {
+            await tx.carAssignment.update({
+              where: { id: activeAssignment.id },
+              data: { releasedAt: new Date() },
+            });
+          }
+        }
+      }
+
+      await tx.trip.delete({
+        where: { id },
+      });
     });
+
     revalidatePath("/admin/trips");
+    revalidatePath("/admin");
+    revalidatePath("/driver");
     return { success: true };
   } catch (error: any) {
     console.error("Delete trip error:", error);

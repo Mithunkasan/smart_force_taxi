@@ -49,6 +49,9 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
     odometer: 0,
     status: "AVAILABLE" as VehicleStatus,
     currentDriverId: "",
+    carType: "Sedan",
+    ownershipType: "Own",
+    notes: "",
   });
 
   const handleOpenAdd = () => {
@@ -68,6 +71,9 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
       odometer: 0,
       status: "AVAILABLE",
       currentDriverId: "",
+      carType: "Sedan",
+      ownershipType: "Own",
+      notes: "",
     });
     setFormError(null);
     setIsFormOpen(true);
@@ -90,6 +96,9 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
       odometer: vehicle.odometer,
       status: vehicle.status,
       currentDriverId: vehicle.currentDriverId || "",
+      carType: vehicle.carType || "Sedan",
+      ownershipType: vehicle.ownershipType || "Own",
+      notes: vehicle.notes || "",
     });
     setFormError(null);
     setIsFormOpen(true);
@@ -152,24 +161,41 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
     const matchesSearch =
       v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.brand.toLowerCase().includes(searchTerm.toLowerCase());
+      v.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (v.carType && v.carType.toLowerCase().includes(searchTerm.toLowerCase()));
       
     const matchesStatus = statusFilter === "ALL" || v.status === statusFilter;
     
     return matchesSearch && matchesStatus;
   });
 
+  const getVehicleStatusBadge = (status: VehicleStatus) => {
+    switch (status) {
+      case "AVAILABLE":
+        return <Badge variant="success">Available</Badge>;
+      case "ASSIGNED":
+        return <Badge variant="secondary">Assigned</Badge>;
+      case "ON_TRIP":
+        return <Badge variant="info">On Trip</Badge>;
+      case "MAINTENANCE":
+        return <Badge variant="warning">Maintenance</Badge>;
+      case "OFFLINE":
+      default:
+        return <Badge variant="danger">Offline</Badge>;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Title & Register Button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Vehicles</h2>
-          <p className="text-sm text-muted-foreground">Manage your vehicle registry, certificates, and status checks.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Cars / Vehicles</h2>
+          <p className="text-sm text-muted-foreground">Manage your vehicle registry, ownership status, and maintenance diagnostics.</p>
         </div>
         <Button onClick={handleOpenAdd} className="sm:self-start">
           <Plus className="h-4.5 w-4.5 mr-2" />
-          Register Vehicle
+          Register Car
         </Button>
       </div>
 
@@ -178,14 +204,14 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
           <Input
-            placeholder="Search by vehicle number, brand, name..."
+            placeholder="Search by plate number, model, brand, type..."
             className="pl-10 bg-card"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          {["ALL", "AVAILABLE", "ASSIGNED", "ON_TRIP", "MAINTENANCE", "BREAKDOWN"].map((status) => (
+          {["ALL", "AVAILABLE", "ASSIGNED", "ON_TRIP", "MAINTENANCE", "OFFLINE"].map((status) => (
             <Button
               key={status}
               variant={statusFilter === status ? "default" : "secondary"}
@@ -203,12 +229,13 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
       <TableContainer>
         <TableHeader>
           <TableRow>
-            <TableHead>Vehicle Details</TableHead>
-            <TableHead>Registration</TableHead>
+            <TableHead>Car Details</TableHead>
+            <TableHead>Plate Number</TableHead>
+            <TableHead>Car Type</TableHead>
+            <TableHead>Own / Rental</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Odometer</TableHead>
             <TableHead>Current Driver</TableHead>
-            <TableHead>Due Checks</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -222,25 +249,19 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 </div>
               </TableCell>
               <TableCell>
-                <div className="font-mono text-xs">{vehicle.vehicleNumber}</div>
+                <div className="font-mono text-xs font-bold">{vehicle.vehicleNumber}</div>
                 <div className="text-[10px] text-muted-foreground">{vehicle.registrationNumber}</div>
               </TableCell>
-              <TableCell>
-                <Badge
-                  variant={
-                    vehicle.status === "AVAILABLE"
-                      ? "success"
-                      : vehicle.status === "MAINTENANCE"
-                      ? "warning"
-                      : vehicle.status === "BREAKDOWN"
-                      ? "danger"
-                      : vehicle.status === "ON_TRIP"
-                      ? "info"
-                      : "secondary"
-                  }
-                >
-                  {vehicle.status.replace("_", " ")}
+              <TableCell className="text-xs">
+                {vehicle.carType || "N/A"}
+              </TableCell>
+              <TableCell className="text-xs">
+                <Badge variant={vehicle.ownershipType === "Own" ? "default" : "secondary"}>
+                  {vehicle.ownershipType || "N/A"}
                 </Badge>
+              </TableCell>
+              <TableCell>
+                {getVehicleStatusBadge(vehicle.status)}
               </TableCell>
               <TableCell className="font-mono text-xs">
                 {vehicle.odometer.toLocaleString()} km
@@ -254,16 +275,6 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 ) : (
                   <span className="text-xs text-muted-foreground">Unassigned</span>
                 )}
-              </TableCell>
-              <TableCell>
-                <div className="text-[10px] space-y-0.5">
-                  <div className="text-muted-foreground">
-                    Service: {new Date(vehicle.serviceDueDate).toLocaleDateString()}
-                  </div>
-                  <div className="text-muted-foreground">
-                    Insurance: {new Date(vehicle.insuranceExpiry).toLocaleDateString()}
-                  </div>
-                </div>
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-1.5">
@@ -282,7 +293,7 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
           ))}
           {filteredVehicles.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                 No vehicles found matching filters.
               </TableCell>
             </TableRow>
@@ -301,18 +312,18 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Vehicle Number (Plate)</label>
+              <label className="text-xs font-semibold text-muted-foreground">Plate Number (Vehicle Number)</label>
               <Input
-                placeholder="DL-1CA-1234"
+                placeholder="TN 01 AB 1234"
                 value={formData.vehicleNumber}
                 onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value })}
                 required
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Name</label>
+              <label className="text-xs font-semibold text-muted-foreground">Display Name</label>
               <Input
-                placeholder="Innova Crysta"
+                placeholder="Toyota Etios"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
@@ -331,9 +342,9 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Model</label>
+              <label className="text-xs font-semibold text-muted-foreground">Car Model</label>
               <Input
-                placeholder="2.4 VX"
+                placeholder="Etios Liva"
                 value={formData.model}
                 onChange={(e) => setFormData({ ...formData, model: e.target.value })}
                 required
@@ -352,6 +363,38 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Car Type (e.g. Sedan, SUV)</label>
+              <Input
+                placeholder="Sedan"
+                value={formData.carType}
+                onChange={(e) => setFormData({ ...formData, carType: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Own / Rental</label>
+              <select
+                className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
+                value={formData.ownershipType}
+                onChange={(e) => setFormData({ ...formData, ownershipType: e.target.value })}
+              >
+                <option value="Own">Own (Owned)</option>
+                <option value="Rental">Rental</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Registration No.</label>
+              <Input
+                placeholder="REG-TN01AB1234"
+                value={formData.registrationNumber}
+                onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Seating Capacity</label>
               <Input
                 type="number"
@@ -366,15 +409,6 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 type="number"
                 value={formData.odometer}
                 onChange={(e) => setFormData({ ...formData, odometer: Number(e.target.value) })}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Registration No.</label>
-              <Input
-                placeholder="REG-INNOVA"
-                value={formData.registrationNumber}
-                onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
                 required
               />
             </div>
@@ -434,7 +468,7 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 <option value="ASSIGNED">Assigned</option>
                 <option value="ON_TRIP">On Trip</option>
                 <option value="MAINTENANCE">Maintenance</option>
-                <option value="BREAKDOWN">Breakdown</option>
+                <option value="OFFLINE">Offline</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -452,6 +486,16 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Notes / Remarks</label>
+            <textarea
+              className="flex min-h-[80px] w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
+              placeholder="Enter notes about vehicle usage, service requirements..."
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            />
           </div>
 
           <div className="flex justify-end gap-2 border-t border-border pt-4 mt-6">
@@ -474,22 +518,7 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 <h3 className="text-xl font-bold">{selectedVehicle.name}</h3>
                 <p className="text-sm text-muted-foreground">{selectedVehicle.brand} {selectedVehicle.model} ({selectedVehicle.year})</p>
               </div>
-              <Badge
-                variant={
-                  selectedVehicle.status === "AVAILABLE"
-                    ? "success"
-                    : selectedVehicle.status === "MAINTENANCE"
-                    ? "warning"
-                    : selectedVehicle.status === "BREAKDOWN"
-                    ? "danger"
-                    : selectedVehicle.status === "ON_TRIP"
-                    ? "info"
-                    : "secondary"
-                }
-                className="text-sm px-3 py-1"
-              >
-                {selectedVehicle.status.replace("_", " ")}
-              </Badge>
+              {getVehicleStatusBadge(selectedVehicle.status)}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -509,9 +538,27 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 text-xs">
+              <div>
+                <span className="text-muted-foreground block">Car Type:</span>
+                <span className="font-semibold text-foreground">{selectedVehicle.carType || "N/A"}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">Ownership Type:</span>
+                <span className="font-semibold text-foreground">{selectedVehicle.ownershipType || "N/A"}</span>
+              </div>
+            </div>
+
+            {selectedVehicle.notes && (
+              <div className="bg-muted/40 p-3 rounded-lg border border-border/40 text-xs">
+                <span className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Notes</span>
+                <p className="text-foreground italic">{selectedVehicle.notes}</p>
+              </div>
+            )}
+
             <div className="border-t border-border pt-4">
               <h4 className="text-xs font-bold text-foreground mb-3 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="h-4 w-4 text-primary" /> Certificate Expiry Dates
+                <Calendar className="h-4.5 w-4.5 text-primary" /> Certificate Expiry Dates
               </h4>
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs bg-muted/40 p-4 rounded-xl border border-border/40">
                 <div>

@@ -79,8 +79,8 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
     setTripToEdit(trip);
     setFormData({
       tripNumber: trip.tripNumber,
-      requestedBy: trip.requestedBy,
-      department: trip.department,
+      requestedBy: trip.requestedBy || "",
+      department: trip.department || "",
       pickup: trip.pickup,
       destination: trip.destination,
       startTime: new Date(trip.startTime).toISOString().slice(0, 16),
@@ -144,7 +144,7 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
       t.tripNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.pickup.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.requestedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.requestedBy || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (t.driver?.name || "Unassigned").toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.vehicle.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -159,12 +159,8 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Trips & Dispatch</h2>
-          <p className="text-sm text-muted-foreground">Plan journeys, assign vehicles, check driver rosters, and monitor routes.</p>
+          <p className="text-sm text-muted-foreground">Monitor routes, check active driver rosters, and verify trip diagnostics.</p>
         </div>
-        <Button onClick={handleOpenAdd} className="sm:self-start">
-          <Plus className="h-4.5 w-4.5 mr-2" />
-          Schedule Trip
-        </Button>
       </div>
 
       {/* Filters & Search */}
@@ -179,7 +175,7 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {["ALL", "PENDING", "APPROVED", "ASSIGNED", "STARTED", "COMPLETED", "CANCELLED"].map((status) => (
+          {["ALL", "PENDING", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "COMPLETED", "CANCELLED"].map((status) => (
             <Button
               key={status}
               variant={statusFilter === status ? "default" : "secondary"}
@@ -187,7 +183,7 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
               onClick={() => setStatusFilter(status)}
               className="capitalize text-xs"
             >
-              {status.toLowerCase()}
+              {status.toLowerCase().replace("_", " ")}
             </Button>
           ))}
         </div>
@@ -253,14 +249,16 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
                   variant={
                     trip.status === "COMPLETED"
                       ? "success"
-                      : trip.status === "STARTED"
+                      : trip.status === "IN_PROGRESS"
                       ? "info"
+                      : trip.status === "ACCEPTED"
+                      ? "warning"
                       : trip.status === "CANCELLED"
                       ? "secondary"
                       : "warning"
                   }
                 >
-                  {trip.status}
+                  {trip.status.replace("_", " ")}
                 </Badge>
               </TableCell>
               <TableCell className="text-right">
@@ -407,9 +405,9 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as TripStatus })}
               >
                 <option value="PENDING">Pending</option>
-                <option value="APPROVED">Approved</option>
                 <option value="ASSIGNED">Assigned</option>
-                <option value="STARTED">Started</option>
+                <option value="ACCEPTED">Accepted</option>
+                <option value="IN_PROGRESS">In Progress</option>
                 <option value="COMPLETED">Completed</option>
                 <option value="CANCELLED">Cancelled</option>
               </select>
@@ -505,9 +503,47 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
                   <span className="text-muted-foreground font-semibold">Purpose:</span>
                   <span>{selectedTrip.purpose}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground font-semibold">Assigned By:</span>
+                  <span className="font-semibold">{selectedTrip.assignedBy || "ADMIN"}</span>
+                </div>
+                {selectedTrip.startGpsUrl && (
+                  <div className="flex justify-between border-t border-border/50 pt-2 mt-2">
+                    <span className="text-muted-foreground font-semibold">Start GPS:</span>
+                    <a href={selectedTrip.startGpsUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-bold">
+                      View Start Location ↗
+                    </a>
+                  </div>
+                )}
+                {selectedTrip.destinationGpsUrl && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground font-semibold">Destination GPS:</span>
+                    <a href={selectedTrip.destinationGpsUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-bold">
+                      View Destination ↗
+                    </a>
+                  </div>
+                )}
+                {selectedTrip.actualStartTime && (
+                  <div className="flex justify-between border-t border-border/50 pt-2 mt-2">
+                    <span className="text-muted-foreground">Actual Start:</span>
+                    <span>{new Date(selectedTrip.actualStartTime).toLocaleString()}</span>
+                  </div>
+                )}
+                {selectedTrip.actualEndTime && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Actual End:</span>
+                    <span>{new Date(selectedTrip.actualEndTime).toLocaleString()}</span>
+                  </div>
+                )}
+                {selectedTrip.durationMinutes !== null && selectedTrip.durationMinutes !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Duration:</span>
+                    <span>{selectedTrip.durationMinutes} minutes</span>
+                  </div>
+                )}
                 {selectedTrip.notes && (
                   <div className="border-t border-border/50 pt-2 mt-2">
-                    <span className="block text-muted-foreground font-semibold mb-1">Manager Notes:</span>
+                    <span className="block text-muted-foreground font-semibold mb-1">Notes:</span>
                     <p className="text-muted-foreground bg-card p-2 rounded border border-border/40">{selectedTrip.notes}</p>
                   </div>
                 )}

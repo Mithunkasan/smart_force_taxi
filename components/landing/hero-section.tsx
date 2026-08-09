@@ -11,6 +11,17 @@ export default function HeroSection() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isPastHero, setIsPastHero] = useState(false);
   const { t } = useTranslation();
+  const [scrolledVal, setScrolledVal] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+
+  useEffect(() => {
+    setViewportHeight(window.innerHeight);
+    const handleResize = () => {
+      setViewportHeight(window.innerHeight);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -31,6 +42,8 @@ export default function HeroSection() {
     let animationFrameId: number;
     let targetProgress = 0;
     let currentProgress = 0;
+    let targetScrolled = 0;
+    let currentScrolled = 0;
 
     const handleScroll = () => {
       const rect = container.getBoundingClientRect();
@@ -46,6 +59,7 @@ export default function HeroSection() {
       // Calculate progress from 0 to 1 for video playback (reaches 1.0 when next section starts entering)
       const progress = Math.max(0, Math.min(1, scrolled / scrollRange));
       targetProgress = progress;
+      targetScrolled = scrolled;
       setScrollProgress(progress);
 
       // Check if we have scrolled past the hero container completely (scrolled >= 250vh)
@@ -56,6 +70,8 @@ export default function HeroSection() {
     const updateVideoFrame = () => {
       // Smooth interpolation for scroll progress (LERP)
       currentProgress += (targetProgress - currentProgress) * 0.05;
+      currentScrolled += (targetScrolled - currentScrolled) * 0.05;
+      setScrolledVal(currentScrolled);
       
       if (video.duration) {
         const targetTime = currentProgress * video.duration;
@@ -130,6 +146,40 @@ export default function HeroSection() {
     }
   ];
 
+  const logoSrc = "/logo1.png";
+  const videoEndScroll = viewportHeight * 1.5;
+  const heroEndScroll = viewportHeight * 2.5;
+
+  let logoOpacity = 0;
+  if (scrolledVal >= videoEndScroll) {
+    logoOpacity = 1;
+  } else if (scrolledVal > videoEndScroll - 100 && videoEndScroll > 100) {
+    logoOpacity = (scrolledVal - (videoEndScroll - 100)) / 100;
+  }
+
+  const isPastTransition = scrolledVal >= heroEndScroll;
+  const showLogo = logoOpacity > 0.01;
+
+  const logoStyle: React.CSSProperties = isPastTransition
+    ? {
+        position: "absolute",
+        top: `${heroEndScroll + viewportHeight / 2}px`,
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        opacity: logoOpacity,
+        zIndex: 30,
+        pointerEvents: "none",
+      }
+    : {
+        position: "fixed",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        opacity: logoOpacity,
+        zIndex: 30,
+        pointerEvents: "none",
+      };
+
   return (
     <div ref={containerRef} id="home" className="relative h-[250vh] bg-transparent">
       {/* Fixed Background Video (stays fixed in the viewport, covered by sections below) */}
@@ -139,7 +189,7 @@ export default function HeroSection() {
         muted
         playsInline
         preload="auto"
-        className="fixed inset-0 w-full h-full object-cover brightness-[0.4] transition-opacity duration-500"
+        className="fixed inset-0 w-full h-full object-cover transition-opacity duration-500 dark:brightness-100 brightness-[0.95]"
         style={{
           opacity: isLoaded && !isPastHero ? 1 : 0,
           display: isPastHero ? "none" : "block",
@@ -158,7 +208,7 @@ export default function HeroSection() {
       )}
 
       {/* Floating background color blobs (fixed for parallax look, hidden once covered) */}
-      <div className="fixed inset-0 bg-gradient-to-b from-background/50 via-transparent to-background pointer-events-none" style={{ zIndex: 2, display: isPastHero ? "none" : "block" }} />
+      <div className="fixed inset-0 bg-gradient-to-b from-transparent via-transparent to-background pointer-events-none" style={{ zIndex: 2, display: isPastHero ? "none" : "block" }} />
       <div className="fixed top-1/4 left-1/4 w-[500px] h-[500px] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" style={{ zIndex: 3, display: isPastHero ? "none" : "block" }} />
       <div className="fixed bottom-1/4 right-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" style={{ zIndex: 3, display: isPastHero ? "none" : "block" }} />
 
@@ -196,7 +246,7 @@ export default function HeroSection() {
                   {index === 2 && <Shield className="w-3.5 h-3.5 text-green-500" />}
                   {frame.subtitle}
                 </div>
-                <h1 className="text-4xl sm:text-6xl md:text-8xl font-black text-white tracking-tight uppercase leading-none mb-6">
+                <h1 className="text-4xl sm:text-6xl md:text-8xl font-black text-white tracking-tight uppercase leading-none mb-6 drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]">
                   {frame.title.split(" ").map((word, i) => (
                     <span
                       key={i}
@@ -210,7 +260,7 @@ export default function HeroSection() {
                     </span>
                   ))}
                 </h1>
-                <p className="max-w-2xl text-zinc-300 text-sm sm:text-base md:text-lg font-light mb-8 leading-relaxed">
+                <p className="max-w-2xl text-zinc-100 text-sm sm:text-base md:text-lg font-normal mb-8 leading-relaxed drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
                   {frame.description}
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -236,6 +286,17 @@ export default function HeroSection() {
           <ChevronDown className="w-5 h-5 text-amber-500" />
         </div>
       </div>
+
+      {/* Centered Logo Transition overlay */}
+      {showLogo && (
+        <div style={logoStyle} className="transition-opacity duration-150 flex items-center justify-center">
+          <img
+            src={logoSrc}
+            alt="Smart Force Taxi Logo"
+            className="w-48 sm:w-64 md:w-80 h-auto object-contain max-h-[30vh]"
+          />
+        </div>
+      )}
     </div>
   );
 }

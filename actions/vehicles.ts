@@ -19,6 +19,9 @@ export async function createVehicle(data: {
   odometer: number;
   status: VehicleStatus;
   currentDriverId?: string | null;
+  carType?: string;
+  ownershipType?: string;
+  notes?: string;
 }) {
   try {
     await db.vehicle.create({
@@ -37,6 +40,9 @@ export async function createVehicle(data: {
         odometer: Number(data.odometer),
         status: data.status,
         currentDriverId: data.currentDriverId || null,
+        carType: data.carType || null,
+        ownershipType: data.ownershipType || null,
+        notes: data.notes || null,
       },
     });
     revalidatePath("/admin/vehicles");
@@ -64,6 +70,9 @@ export async function updateVehicle(
     odometer: number;
     status: VehicleStatus;
     currentDriverId?: string | null;
+    carType?: string;
+    ownershipType?: string;
+    notes?: string;
   }
 ) {
   try {
@@ -84,6 +93,9 @@ export async function updateVehicle(
         odometer: Number(data.odometer),
         status: data.status,
         currentDriverId: data.currentDriverId || null,
+        carType: data.carType || null,
+        ownershipType: data.ownershipType || null,
+        notes: data.notes || null,
       },
     });
     revalidatePath("/admin/vehicles");

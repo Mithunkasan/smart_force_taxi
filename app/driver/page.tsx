@@ -13,52 +13,59 @@ export default async function DriverDashboard() {
     redirect("/login");
   }
 
-  // Fetch driver complete profile
   const driver = await db.user.findUnique({
     where: { id: session.user.id },
-    include: {
-      attendance: {
-        orderBy: { checkIn: "desc" },
-        take: 10,
-      },
-    },
   });
 
   if (!driver) {
     redirect("/login");
   }
 
-  // Find active clock-in
-  const activeAttendance = await db.attendance.findFirst({
+  // Find active driver shift
+  const activeShift = await db.driverShift.findFirst({
     where: {
       driverId: driver.id,
-      checkOut: null,
+      actualEnd: null,
     },
   });
 
-  // Calculate assigned and completed trip counts
-  const assignedTripsCount = await db.trip.count({
+  // Find currently assigned vehicle to driver
+  const assignedVehicle = await db.vehicle.findFirst({
+    where: {
+      currentDriverId: driver.id,
+    },
+  });
+
+  // Find all available vehicles
+  const availableVehicles = await db.vehicle.findMany({
+    where: {
+      status: "AVAILABLE",
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  // Find active work trip (ASSIGNED, ACCEPTED, or IN_PROGRESS)
+  const activeTrip = await db.trip.findFirst({
     where: {
       driverId: driver.id,
       status: {
-        in: ["ASSIGNED", "APPROVED", "STARTED"],
+        in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
       },
     },
-  });
-
-  const completedTripsCount = await db.trip.count({
-    where: {
-      driverId: driver.id,
-      status: "COMPLETED",
+    include: {
+      vehicle: true,
     },
   });
 
   return (
     <DriverDashboardClient
       driver={driver}
-      activeAttendance={activeAttendance}
-      assignedTripsCount={assignedTripsCount}
-      completedTripsCount={completedTripsCount}
+      activeShift={activeShift}
+      assignedVehicle={assignedVehicle}
+      availableVehicles={availableVehicles}
+      activeTrip={activeTrip}
     />
   );
 }

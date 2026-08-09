@@ -13,38 +13,18 @@ export default async function DriverTripsPage() {
     redirect("/login");
   }
 
+  // Load all trips assigned or driven by this driver
   const trips = await db.trip.findMany({
     where: {
-      OR: [
-        { driverId: session.user.id },
-        { driverId: null, status: { in: ["PENDING", "APPROVED"] } }
-      ]
+      driverId: session.user.id,
     },
     include: {
-      vehicle: {
-        include: {
-          trips: {
-            where: {
-              status: "COMPLETED",
-              parking: { isNot: null },
-            },
-            orderBy: {
-              endTime: "desc",
-            },
-            take: 1,
-            include: {
-              parking: true,
-            },
-          },
-        },
-      },
-      closing: true,
-      parking: true,
+      vehicle: true,
     },
     orderBy: {
       startTime: "desc",
     },
   });
 
-  return <DriverTripsClient trips={trips} driverId={session.user.id} />;
+  return <DriverTripsClient trips={trips} />;
 }

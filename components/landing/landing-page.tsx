@@ -75,6 +75,9 @@ export default function LandingPage({ session }: LandingPageProps) {
 
         {/* Content sections scrolling over the video */}
         <div className="relative z-20 bg-background">
+          {/* Logo Transition Section */}
+          <div className="h-screen w-full bg-background" />
+
           {/* Company Mission & Core stats */}
           <AboutSection />
 

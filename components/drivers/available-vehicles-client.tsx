@@ -41,7 +41,7 @@ export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientPro
   });
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-7xl w-full space-y-6">
       {/* Title section */}
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Available Fleet</h2>
