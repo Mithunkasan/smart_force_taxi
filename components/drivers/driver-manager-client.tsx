@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import { User, Vehicle } from "@prisma/client";
+import { User, Vehicle, DriverStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createDriver, updateDriver, deleteDriver } from "@/actions/drivers";
-import { Search, Plus, Edit2, Trash2, Eye, Calendar, ShieldAlert, Award } from "lucide-react";
+import { Search, Plus, Edit2, Trash2, Eye, Calendar, ShieldAlert, Award, Clock } from "lucide-react";
 
 interface DriverManagerProps {
   drivers: (User & {
@@ -19,7 +19,7 @@ interface DriverManagerProps {
 
 export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [shiftFilter, setShiftFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   // Dialog States
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -41,8 +41,11 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
     phone: "",
     licenseNumber: "",
     licenseExpiry: "",
+    joiningDate: "",
+    shiftStartTime: "06:00 AM",
+    shiftEndTime: "06:00 PM",
+    shiftDuration: "12 Hours",
     experience: 0,
-    shift: "Morning",
     emergencyContact: "",
     password: "",
   });
@@ -56,8 +59,11 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
       phone: "",
       licenseNumber: "",
       licenseExpiry: new Date().toISOString().split("T")[0],
+      joiningDate: new Date().toISOString().split("T")[0],
+      shiftStartTime: "06:00 AM",
+      shiftEndTime: "06:00 PM",
+      shiftDuration: "12 Hours",
       experience: 0,
-      shift: "Morning",
       emergencyContact: "",
       password: "",
     });
@@ -74,8 +80,11 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
       phone: driver.phone || "",
       licenseNumber: driver.licenseNumber || "",
       licenseExpiry: driver.licenseExpiry ? new Date(driver.licenseExpiry).toISOString().split("T")[0] : "",
+      joiningDate: driver.joiningDate ? new Date(driver.joiningDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+      shiftStartTime: driver.shiftStartTime || "06:00 AM",
+      shiftEndTime: driver.shiftEndTime || "06:00 PM",
+      shiftDuration: driver.shiftDuration || "12 Hours",
       experience: driver.experience || 0,
-      shift: driver.shift || "Morning",
       emergencyContact: driver.emergencyContact || "",
       password: "", // Leave blank on edit
     });
@@ -107,8 +116,11 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
           phone: formData.phone,
           licenseNumber: formData.licenseNumber,
           licenseExpiry: formData.licenseExpiry,
+          joiningDate: formData.joiningDate,
+          shiftStartTime: formData.shiftStartTime,
+          shiftEndTime: formData.shiftEndTime,
+          shiftDuration: formData.shiftDuration,
           experience: Number(formData.experience),
-          shift: formData.shift,
           emergencyContact: formData.emergencyContact,
         });
       } else {
@@ -119,8 +131,11 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
           phone: formData.phone,
           licenseNumber: formData.licenseNumber,
           licenseExpiry: formData.licenseExpiry,
+          joiningDate: formData.joiningDate,
+          shiftStartTime: formData.shiftStartTime,
+          shiftEndTime: formData.shiftEndTime,
+          shiftDuration: formData.shiftDuration,
           experience: Number(formData.experience),
-          shift: formData.shift,
           emergencyContact: formData.emergencyContact,
           password: formData.password || undefined,
         });
@@ -152,11 +167,27 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
       d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       d.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (d.licenseNumber && d.licenseNumber.toLowerCase().includes(searchTerm.toLowerCase()));
-      
-    const matchesShift = shiftFilter === "ALL" || d.shift === shiftFilter;
-    
-    return matchesSearch && matchesShift;
+
+    const matchesStatus = statusFilter === "ALL" || d.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
   });
+
+  const getDriverStatusBadge = (status: DriverStatus) => {
+    switch (status) {
+      case "AVAILABLE":
+        return <Badge variant="success">Available</Badge>;
+      case "ON_TRIP":
+        return <Badge variant="info">On Trip</Badge>;
+      case "ON_BREAK":
+        return <Badge variant="warning">On Break</Badge>;
+      case "OFF_DUTY":
+        return <Badge variant="secondary">Off Duty</Badge>;
+      case "OFFLINE":
+      default:
+        return <Badge variant="danger">Offline</Badge>;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -164,7 +195,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Drivers</h2>
-          <p className="text-sm text-muted-foreground">Manage corporate driver accounts, credentials, and shift rosters.</p>
+          <p className="text-sm text-muted-foreground">Manage corporate driver accounts, status checks, and working hours.</p>
         </div>
         <Button onClick={handleOpenAdd} className="sm:self-start">
           <Plus className="h-4.5 w-4.5 mr-2" />
@@ -184,14 +215,15 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          {["ALL", "Morning", "Evening", "Night"].map((shift) => (
+          {["ALL", "AVAILABLE", "ON_TRIP", "ON_BREAK", "OFF_DUTY", "OFFLINE"].map((status) => (
             <Button
-              key={shift}
-              variant={shiftFilter === shift ? "default" : "secondary"}
+              key={status}
+              variant={statusFilter === status ? "default" : "secondary"}
               size="sm"
-              onClick={() => setShiftFilter(shift)}
+              onClick={() => setStatusFilter(status)}
+              className="capitalize"
             >
-              {shift} Shift
+              {status.toLowerCase().replace("_", " ")}
             </Button>
           ))}
         </div>
@@ -206,21 +238,20 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             <TableHead>Contact</TableHead>
             <TableHead>Duty Status</TableHead>
             <TableHead>License Details</TableHead>
-            <TableHead>Shift</TableHead>
-            <TableHead>Assigned Vehicle</TableHead>
+            <TableHead>Shift Config</TableHead>
+            <TableHead>Current Assigned Car</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {filteredDrivers.map((driver) => {
-            const isDriving = activeDriverIds.includes(driver.id);
-            const statusLabel = isDriving ? "Driving" : "Available";
-
             return (
               <TableRow key={driver.id}>
                 <TableCell>
                   <div className="font-semibold text-foreground">{driver.name}</div>
-                  <div className="text-[10px] text-muted-foreground">Joined: {new Date(driver.createdAt).toLocaleDateString()}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Joined: {driver.joiningDate ? new Date(driver.joiningDate).toLocaleDateString() : "N/A"}
+                  </div>
                 </TableCell>
                 <TableCell className="font-mono text-xs">{driver.employeeId}</TableCell>
                 <TableCell>
@@ -228,9 +259,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
                   <div className="text-xs text-muted-foreground">{driver.phone}</div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={isDriving ? "info" : "success"}>
-                    {statusLabel}
-                  </Badge>
+                  {getDriverStatusBadge(driver.status)}
                 </TableCell>
                 <TableCell>
                   <div className="text-xs font-mono">{driver.licenseNumber}</div>
@@ -240,7 +269,14 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
                     </div>
                   )}
                 </TableCell>
-                <TableCell className="text-xs">{driver.shift || "N/A"}</TableCell>
+                <TableCell className="text-xs">
+                  <div className="font-medium text-foreground">
+                    {driver.shiftStartTime} - {driver.shiftEndTime}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground font-semibold">
+                    ({driver.shiftDuration})
+                  </div>
+                </TableCell>
                 <TableCell>
                   {driver.assignedVehicles.length > 0 ? (
                     <div className="text-xs">
@@ -248,7 +284,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
                       <span className="block text-[10px] font-mono text-muted-foreground">{driver.assignedVehicles[0].vehicleNumber}</span>
                     </div>
                   ) : (
-                    <span className="text-xs text-muted-foreground">None</span>
+                    <span className="text-xs text-muted-foreground">Unassigned</span>
                   )}
                 </TableCell>
                 <TableCell className="text-right">
@@ -290,7 +326,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Full Name</label>
               <Input
-                placeholder="John Doe"
+                placeholder="Kumar"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
@@ -300,7 +336,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
               <label className="text-xs font-semibold text-muted-foreground">Email Address</label>
               <Input
                 type="email"
-                placeholder="john@company.com"
+                placeholder="kumar@fleet.com"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
@@ -321,7 +357,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Phone Number</label>
               <Input
-                placeholder="+15550100"
+                placeholder="+919876543210"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 required
@@ -346,7 +382,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">License Number</label>
               <Input
-                placeholder="DL-12345ABC"
+                placeholder="DL-KUMAR12345"
                 value={formData.licenseNumber}
                 onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
                 required
@@ -365,6 +401,15 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Joining Date</label>
+              <Input
+                type="date"
+                value={formData.joiningDate}
+                onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Experience (Years)</label>
               <Input
                 type="number"
@@ -373,16 +418,36 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
                 required
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Shift Schedule</label>
+              <label className="text-xs font-semibold text-muted-foreground">Shift Start Time</label>
+              <Input
+                placeholder="e.g. 06:00 AM"
+                value={formData.shiftStartTime}
+                onChange={(e) => setFormData({ ...formData, shiftStartTime: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Shift End Time</label>
+              <Input
+                placeholder="e.g. 06:00 PM"
+                value={formData.shiftEndTime}
+                onChange={(e) => setFormData({ ...formData, shiftEndTime: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Shift Duration</label>
               <select
                 className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
-                value={formData.shift}
-                onChange={(e) => setFormData({ ...formData, shift: e.target.value })}
+                value={formData.shiftDuration}
+                onChange={(e) => setFormData({ ...formData, shiftDuration: e.target.value })}
               >
-                <option value="Morning">Morning</option>
-                <option value="Evening">Evening</option>
-                <option value="Night">Night</option>
+                <option value="8 Hours">8 Hours</option>
+                <option value="12 Hours">12 Hours</option>
               </select>
             </div>
           </div>
@@ -390,7 +455,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
           <div className="space-y-1">
             <label className="text-xs font-semibold text-muted-foreground">Emergency Contact (Name & Phone)</label>
             <Input
-              placeholder="Jane Doe (+15550103)"
+              placeholder="Sunita (+919876543211)"
               value={formData.emergencyContact}
               onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
               required
@@ -417,9 +482,9 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
                 <h3 className="text-xl font-bold">{selectedDriver.name}</h3>
                 <p className="text-sm text-muted-foreground">Employee ID: {selectedDriver.employeeId}</p>
               </div>
-              <Badge variant={activeDriverIds.includes(selectedDriver.id) ? "info" : "success"} className="text-sm px-3 py-1">
-                {activeDriverIds.includes(selectedDriver.id) ? "Driving" : "Available"}
-              </Badge>
+              <div className="flex flex-col items-end gap-1.5">
+                {getDriverStatusBadge(selectedDriver.status)}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -431,10 +496,11 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Calendar className="h-5 w-5 text-primary shrink-0" />
+                <Clock className="h-5 w-5 text-primary shrink-0" />
                 <div>
-                  <span className="block text-[10px] text-muted-foreground uppercase font-bold font-mono">Shift Hours</span>
-                  <span className="text-sm">{selectedDriver.shift} Shift</span>
+                  <span className="block text-[10px] text-muted-foreground uppercase font-bold">Configured Shift</span>
+                  <span className="text-sm font-semibold">{selectedDriver.shiftStartTime} - {selectedDriver.shiftEndTime}</span>
+                  <span className="block text-[10px] text-muted-foreground">Duration: {selectedDriver.shiftDuration}</span>
                 </div>
               </div>
             </div>
@@ -452,6 +518,12 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
                   <span className="text-muted-foreground">License Expiry Date:</span>
                   <span className="font-semibold text-foreground">
                     {selectedDriver.licenseExpiry ? new Date(selectedDriver.licenseExpiry).toLocaleDateString("en-US", { dateStyle: "long" }) : "N/A"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Joining Date:</span>
+                  <span className="font-semibold text-foreground">
+                    {selectedDriver.joiningDate ? new Date(selectedDriver.joiningDate).toLocaleDateString("en-US", { dateStyle: "long" }) : "N/A"}
                   </span>
                 </div>
                 <div className="flex justify-between border-t border-border/40 pt-2 mt-2">
@@ -484,7 +556,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
               Are you sure you want to de-register driver <span className="font-bold text-primary">{selectedDriver.name}</span> ({selectedDriver.employeeId})?
             </p>
             <p className="text-xs text-red-500 font-semibold bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
-              Warning: This action will permanently delete the driver's corporate profile, credentials access, and any corresponding trip and attendance histories.
+              Warning: This action will permanently delete the driver's corporate profile, credentials access, and any corresponding trip and shift histories.
             </p>
             <div className="flex justify-end gap-2 border-t border-border pt-4 mt-6">
               <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>

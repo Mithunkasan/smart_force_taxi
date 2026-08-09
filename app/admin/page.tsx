@@ -2,6 +2,7 @@ import React from "react";
 import { db } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import {
   Truck,
@@ -12,6 +13,7 @@ import {
   DollarSign,
   AlertTriangle,
   Clock,
+  MapPin,
 } from "lucide-react";
 
 export const revalidate = 0; // Disable caching to fetch live db values
@@ -20,53 +22,32 @@ export default async function AdminDashboard() {
   // 1. Vehicle counts
   const totalVehicles = await db.vehicle.count();
   const availableVehicles = await db.vehicle.count({ where: { status: "AVAILABLE" } });
+  const assignedVehicles = await db.vehicle.count({ where: { status: "ASSIGNED" } });
   const tripVehicles = await db.vehicle.count({ where: { status: "ON_TRIP" } });
   const maintenanceVehicles = await db.vehicle.count({ where: { status: "MAINTENANCE" } });
-  const breakdownVehicles = await db.vehicle.count({ where: { status: "BREAKDOWN" } });
+  const offlineVehicles = await db.vehicle.count({ where: { status: "OFFLINE" } });
 
   // 2. Driver counts
   const totalDrivers = await db.user.count({ where: { role: "DRIVER" } });
-  
-  // Drivers On duty (have an active trip status 'STARTED')
-  const activeTrips = await db.trip.findMany({
-    where: { status: "STARTED" },
-    select: { driverId: true },
-  });
-  const activeDriverIds = Array.from(new Set(activeTrips.map((t) => t.driverId).filter((id): id is string => id !== null)));
-  const driversOnDuty = activeDriverIds.length;
-  const driversAvailable = Math.max(0, totalDrivers - driversOnDuty);
+  const availableDrivers = await db.user.count({ where: { role: "DRIVER", status: "AVAILABLE" } });
+  const busyDrivers = totalDrivers - availableDrivers;
 
-  // 3. Trip counts
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const todayTrips = await db.trip.count({
+  // 3. Work counts
+  const activeWorksCount = await db.trip.count({
     where: {
-      startTime: {
-        gte: today,
-        lt: tomorrow,
-      },
-    },
-  });
-
-  const upcomingTrips = await db.trip.count({
-    where: {
-      startTime: {
-        gte: tomorrow,
-      },
       status: {
-        in: ["APPROVED", "ASSIGNED", "PENDING"],
+        in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
       },
     },
   });
 
-  const pendingVerifications = await db.adminVerification.count({
-    where: { status: "PENDING" },
+  const completedWorksCount = await db.trip.count({
+    where: {
+      status: "COMPLETED",
+    },
   });
 
-  // 4. Financial totals
+  // 4. Financial totals (mock summaries or historical fuel logs)
   const revenueAgg = await db.tripClosing.aggregate({
     _sum: { tripAmount: true },
   });
@@ -122,10 +103,10 @@ export default async function AdminDashboard() {
   // 6. Build vehicle status distribution for pie chart
   const vehicleStatusDistribution = [
     { name: "AVAILABLE", value: availableVehicles, color: "#22c55e" },
-    { name: "ASSIGNED", value: totalVehicles - availableVehicles - tripVehicles - maintenanceVehicles - breakdownVehicles, color: "#3b82f6" },
+    { name: "ASSIGNED", value: assignedVehicles, color: "#3b82f6" },
     { name: "ON TRIP", value: tripVehicles, color: "#a855f7" },
     { name: "MAINTENANCE", value: maintenanceVehicles, color: "#eab308" },
-    { name: "BREAKDOWN", value: breakdownVehicles, color: "#dc2626" },
+    { name: "OFFLINE", value: offlineVehicles, color: "#dc2626" },
   ].filter((item) => item.value > 0);
 
   // 7. Fetch recent notifications
@@ -134,13 +115,50 @@ export default async function AdminDashboard() {
     take: 5,
   });
 
+  // 8. Load all Drivers with current assigned Vehicle and active Work Trip
+  const driversList = await db.user.findMany({
+    where: {
+      role: "DRIVER",
+    },
+    include: {
+      assignedVehicles: true,
+      trips: {
+        where: {
+          status: {
+            in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
+          },
+        },
+        take: 1,
+      },
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const getDriverStatusBadge = (status: string) => {
+    switch (status) {
+      case "AVAILABLE":
+        return <Badge variant="success">Available</Badge>;
+      case "ON_TRIP":
+        return <Badge variant="info">On Trip</Badge>;
+      case "ON_BREAK":
+        return <Badge variant="warning">On Break</Badge>;
+      case "OFF_DUTY":
+        return <Badge variant="secondary">Off Duty</Badge>;
+      case "OFFLINE":
+      default:
+        return <Badge variant="danger">Offline</Badge>;
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header Title */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">Fleet Control Center</h2>
         <p className="text-sm text-muted-foreground">
-          Real-time metrics, fleet tracking diagnostics, and operational logs.
+          Real-time diagnostics, driver working status tracking, and vehicle availability overview.
         </p>
       </div>
 
@@ -153,11 +171,11 @@ export default async function AdminDashboard() {
               <Truck className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-muted-foreground">Total Vehicles</p>
-              <h3 className="text-2xl font-bold">{totalVehicles}</h3>
+              <p className="text-xs font-semibold text-muted-foreground">Cars / Vehicles</p>
+              <h3 className="text-2xl font-bold">{totalVehicles} Total</h3>
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 <span className="text-green-500 font-semibold">{availableVehicles}</span> Available ·{" "}
-                <span className="text-purple-500 font-semibold">{tripVehicles}</span> On Trip
+                <span className="text-purple-500 font-semibold">{tripVehicles}</span> Busy
               </p>
             </div>
           </CardContent>
@@ -170,94 +188,116 @@ export default async function AdminDashboard() {
               <Users className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-muted-foreground">Total Drivers</p>
-              <h3 className="text-2xl font-bold">{totalDrivers}</h3>
+              <p className="text-xs font-semibold text-muted-foreground">Drivers</p>
+              <h3 className="text-2xl font-bold">{totalDrivers} Registered</h3>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                <span className="text-green-500 font-semibold">{driversAvailable}</span> Available ·{" "}
-                <span className="text-blue-500 font-semibold">{driversOnDuty}</span> On Duty
+                <span className="text-green-500 font-semibold">{availableDrivers}</span> Available ·{" "}
+                <span className="text-blue-500 font-semibold">{busyDrivers}</span> Busy / Offline
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Trips Stat */}
+        {/* Active Work Stat */}
         <Card className="border-border glass glow-primary hover:-translate-y-1 transition-transform duration-200">
           <CardContent className="flex items-center gap-4 p-6">
             <div className="rounded-full bg-green-500/10 p-3 text-green-500">
               <Route className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-muted-foreground">Trips Summary</p>
-              <h3 className="text-2xl font-bold">{todayTrips + upcomingTrips}</h3>
+              <p className="text-xs font-semibold text-muted-foreground">Active Work Logs</p>
+              <h3 className="text-2xl font-bold">{activeWorksCount} Running</h3>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                <span className="text-foreground font-semibold">{todayTrips}</span> Today ·{" "}
-                <span className="text-muted-foreground font-semibold">{upcomingTrips}</span> Upcoming
+                Current ongoing/assigned trips
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Pending Verifications Stat */}
+        {/* Completed Work Stat */}
         <Card className="border-border glass glow-primary hover:-translate-y-1 transition-transform duration-200">
           <CardContent className="flex items-center gap-4 p-6">
             <div className="rounded-full bg-yellow-500/10 p-3 text-yellow-500">
               <FileCheck className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-muted-foreground">Verifications</p>
-              <h3 className="text-2xl font-bold">{pendingVerifications}</h3>
+              <p className="text-xs font-semibold text-muted-foreground">Completed Works</p>
+              <h3 className="text-2xl font-bold">{completedWorksCount} Audited</h3>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                <span className="text-yellow-500 font-semibold">{pendingVerifications}</span> Pending admin review
+                Cumulative historical trips
               </p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Financials Overview Grid */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border bg-gradient-to-tr from-green-50 to-white dark:from-green-950/10 dark:to-zinc-900 border-green-500/10 p-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground">Gross Revenue</p>
-              <h3 className="text-xl font-bold mt-1 text-green-600 dark:text-green-400">
-                ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </h3>
-            </div>
-            <div className="rounded-lg bg-green-500/10 p-2 text-green-600">
-              <TrendingUp className="h-4 w-4" />
-            </div>
-          </div>
-        </Card>
+      {/* Real-time Driver + Car + Work Tracker Table */}
+      <Card className="border-border bg-card">
+        <div className="p-6">
+          <h3 className="text-lg font-bold mb-4">Real-time Driver Status & Assignment Tracking</h3>
+          <TableContainer>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Driver</TableHead>
+                <TableHead>Car Assigned</TableHead>
+                <TableHead>Shift Duration</TableHead>
+                <TableHead>Active Work Route</TableHead>
+                <TableHead>Duty Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {driversList.map((drv) => {
+                const car = drv.assignedVehicles[0] || null;
+                const trip = drv.trips[0] || null;
 
-        <Card className="border-border bg-gradient-to-tr from-yellow-50 to-white dark:from-yellow-950/10 dark:to-zinc-900 border-yellow-500/10 p-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground">Fuel Expenses</p>
-              <h3 className="text-xl font-bold mt-1 text-yellow-600 dark:text-yellow-500">
-                ${totalFuelCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </h3>
-            </div>
-            <div className="rounded-lg bg-yellow-500/10 p-2 text-yellow-600">
-              <DollarSign className="h-4 w-4" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="border-border bg-gradient-to-tr from-red-50 to-white dark:from-red-950/10 dark:to-zinc-900 border-red-500/10 p-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground">Maintenance Expenses</p>
-              <h3 className="text-xl font-bold mt-1 text-red-600 dark:text-red-400">
-                ${totalMaintenanceCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </h3>
-            </div>
-            <div className="rounded-lg bg-red-500/10 p-2 text-red-600">
-              <AlertTriangle className="h-4 w-4" />
-            </div>
-          </div>
-        </Card>
-      </div>
+                return (
+                  <TableRow key={drv.id}>
+                    <TableCell className="font-semibold">{drv.name}</TableCell>
+                    <TableCell>
+                      {car ? (
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-sm">{car.name}</span>
+                          <span className="font-mono text-xs text-primary font-bold">{car.vehicleNumber}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground italic text-xs">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs font-medium">
+                      {drv.status !== "OFFLINE" ? (
+                        <span>{drv.shiftDuration || "12 Hours"}</span>
+                      ) : (
+                        <span className="text-muted-foreground italic">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {trip ? (
+                        <div className="flex flex-col text-xs">
+                          <span className="font-mono text-xs text-primary font-bold">{trip.tripNumber}</span>
+                          <span>{trip.pickup} ➔ {trip.destination}</span>
+                          <span className="text-[9px] text-muted-foreground">({trip.status})</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground italic text-xs">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {getDriverStatusBadge(drv.status)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {driversList.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                    No drivers registered in the database.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </TableContainer>
+        </div>
+      </Card>
 
       {/* Analytics Charts */}
       <DashboardCharts
@@ -279,39 +319,39 @@ export default async function AdminDashboard() {
                   <div className="relative pb-8">
                     {idx !== recentActivities.length - 1 && (
                       <span
-                        className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-border"
-                        aria-hidden="true"
-                      />
-                    )}
-                    <div className="relative flex space-x-3">
+                      className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-border"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <div className="relative flex space-x-3">
+                    <div>
+                      <span className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center ring-8 ring-card">
+                        <Truck className="h-4 w-4" />
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0 pt-1.5 flex justify-between space-x-4">
                       <div>
-                        <span className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center ring-8 ring-card">
-                          <Truck className="h-4 w-4" />
-                        </span>
+                        <p className="text-xs text-foreground">{activity.message}</p>
                       </div>
-                      <div className="flex-1 min-w-0 pt-1.5 flex justify-between space-x-4">
-                        <div>
-                          <p className="text-xs text-foreground">{activity.message}</p>
-                        </div>
-                        <div className="text-right text-[10px] whitespace-nowrap text-muted-foreground">
-                          {new Date(activity.createdAt).toLocaleDateString()} ·{" "}
-                          {new Date(activity.createdAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </div>
+                      <div className="text-right text-[10px] whitespace-nowrap text-muted-foreground">
+                        {new Date(activity.createdAt).toLocaleDateString()} ·{" "}
+                        {new Date(activity.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </div>
                     </div>
                   </div>
-                </li>
-              ))}
-              {recentActivities.length === 0 && (
-                <p className="text-center text-xs text-muted-foreground py-4">No recent activity logged.</p>
-              )}
-            </ul>
-          </div>
+                </div>
+              </li>
+            ))}
+            {recentActivities.length === 0 && (
+              <p className="text-center text-xs text-muted-foreground py-4">No recent activity logged.</p>
+            )}
+          </ul>
         </div>
-      </Card>
-    </div>
-  );
+      </div>
+    </Card>
+  </div>
+);
 }

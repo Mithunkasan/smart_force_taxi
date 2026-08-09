@@ -18,16 +18,24 @@ enum VehicleStatus {
   ASSIGNED
   ON_TRIP
   MAINTENANCE
-  BREAKDOWN
+  OFFLINE
 }
 
 enum TripStatus {
   PENDING
-  APPROVED
   ASSIGNED
-  STARTED
+  ACCEPTED
+  IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+enum DriverStatus {
+  AVAILABLE
+  ON_TRIP
+  ON_BREAK
+  OFF_DUTY
+  OFFLINE
 }
 
 enum Priority {
@@ -56,6 +64,11 @@ model User {
   experience        Int?           // Years of experience
   shift             String?        // Morning, Evening, Night
   emergencyContact  String?
+  status            DriverStatus   @default(OFFLINE)
+  joiningDate       DateTime?
+  shiftStartTime    String?        // "06:00 AM"
+  shiftEndTime      String?        // "06:00 PM"
+  shiftDuration     String?        // "12 Hours"
   
   // Relations
   assignedVehicles  Vehicle[]      @relation("CurrentDriver")
@@ -64,6 +77,8 @@ model User {
   attendance        Attendance[]
   verifications     AdminVerification[] @relation("VerifiedBy")
   notifications     Notification[]
+  shifts            DriverShift[]
+  carAssignments    CarAssignment[]
   
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -86,6 +101,9 @@ model Vehicle {
   serviceDueDate     DateTime
   odometer           Int
   status             VehicleStatus  @default(AVAILABLE)
+  carType            String?
+  ownershipType      String?        // Own / Rental
+  notes              String?
   
   // Relations
   currentDriverId    String?
@@ -93,6 +111,7 @@ model Vehicle {
   trips              Trip[]
   maintenances       Maintenance[]
   fuelLogs           FuelLog[]
+  carAssignments     CarAssignment[]
 
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
@@ -101,32 +120,39 @@ model Vehicle {
 }
 
 model Trip {
-  id              String       @id @default(uuid())
-  tripNumber      String       @unique
-  requestedBy     String
-  department      String
-  pickup          String
-  destination     String
-  startTime       DateTime
-  endTime         DateTime
-  purpose         String
-  priority        Priority     @default(MEDIUM)
-  status          TripStatus   @default(PENDING)
-  notes           String?
+  id                String       @id @default(uuid())
+  tripNumber        String       @unique
+  requestedBy       String?
+  department        String?
+  pickup            String
+  destination       String
+  startTime         DateTime
+  endTime           DateTime
+  purpose           String
+  priority          Priority     @default(MEDIUM)
+  status            TripStatus   @default(PENDING)
+  notes             String?
   
+  assignedBy        String?      // DRIVER or ADMIN
+  startGpsUrl       String?
+  destinationGpsUrl String?
+  actualStartTime   DateTime?
+  actualEndTime     DateTime?
+  durationMinutes   Int?
+
   // Relations
-  driverId        String?
-  driver          User?        @relation("DriverTrips", fields: [driverId], references: [id], onDelete: SetNull)
-  vehicleId       String
-  vehicle         Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driverId          String?
+  driver            User?        @relation("DriverTrips", fields: [driverId], references: [id], onDelete: SetNull)
+  vehicleId         String
+  vehicle           Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   
-  closing         TripClosing?
-  parking         ParkingLocation?
-  conditionReport VehicleConditionReport?
-  verification    AdminVerification?
+  closing           TripClosing?
+  parking           ParkingLocation?
+  conditionReport   VehicleConditionReport?
+  verification      AdminVerification?
   
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   @@index([status])
   @@index([driverId])
@@ -238,3 +264,28 @@ model Notification {
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 }
+
+model DriverShift {
+  id            String    @id @default(uuid())
+  driverId      String
+  driver        User      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  date          String    // YYYY-MM-DD
+  shiftStart    String
+  shiftEnd      String
+  duration      String
+  actualStart   DateTime  @default(now())
+  actualEnd     DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model CarAssignment {
+  id            String    @id @default(uuid())
+  driverId      String
+  driver        User      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId     String
+  vehicle       Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  assignedAt    DateTime  @default(now())
+  releasedAt    DateTime?
+  createdAt     DateTime  @default(now())
+}
+

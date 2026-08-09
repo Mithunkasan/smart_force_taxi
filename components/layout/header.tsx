@@ -87,23 +87,24 @@ export function Header({ user }: HeaderProps) {
   };
 
   return (
-    <header className="flex h-16 w-full items-center justify-between border-b border-border bg-card px-6">
+    <header className="flex h-16 w-full items-center justify-between border-b border-border bg-card px-4 sm:px-6">
       {/* Welcome Message / Breadcrumb */}
-      <div>
-        <h1 className="text-sm font-semibold text-muted-foreground">
-          {t("welcome_back")}, <span className="font-bold text-foreground">{user.name}</span>
+      <div className="truncate pr-2">
+        <h1 className="text-xs sm:text-sm font-semibold text-muted-foreground truncate">
+          <span className="hidden xs:inline">{t("welcome_back")}, </span>
+          <span className="font-bold text-foreground">{user.name}</span>
         </h1>
-        <p className="text-xs text-muted-foreground capitalize">{user.role.toLowerCase().replace("_", " ")}</p>
+        <p className="text-[10px] sm:text-xs text-muted-foreground capitalize">{user.role.toLowerCase().replace("_", " ")}</p>
       </div>
 
       {/* User Actions */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 shrink-0">
         {/* Language Switcher */}
-        <div className="flex items-center gap-1 border-r border-border pr-3 text-xs">
+        <div className="flex items-center gap-1 border-r border-border pr-2 sm:pr-3 text-[10px] sm:text-xs">
           <button
             onClick={() => setLanguage("en")}
             className={cn(
-              "px-2 py-0.5 text-[11px] font-bold rounded cursor-pointer transition-colors",
+              "px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[11px] font-bold rounded cursor-pointer transition-colors",
               language === "en" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted"
             )}
           >
@@ -112,7 +113,7 @@ export function Header({ user }: HeaderProps) {
           <button
             onClick={() => setLanguage("fi")}
             className={cn(
-              "px-2 py-0.5 text-[11px] font-bold rounded cursor-pointer transition-colors",
+              "px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[11px] font-bold rounded cursor-pointer transition-colors",
               language === "fi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted"
             )}
           >
@@ -143,7 +144,7 @@ export function Header({ user }: HeaderProps) {
 
           {/* Notifications Dropdown */}
           {showNotifDropdown && (
-            <div className="absolute right-0 mt-2 w-80 rounded-xl border border-border bg-card p-4 shadow-xl z-50 text-card-foreground">
+            <div className="absolute right-0 mt-2 w-72 sm:w-80 rounded-xl border border-border bg-card p-4 shadow-xl z-50 text-card-foreground">
               <div className="flex items-center justify-between border-b border-border pb-2 mb-2">
                 <span className="font-semibold text-sm">Notifications</span>
                 {unreadCount > 0 && (

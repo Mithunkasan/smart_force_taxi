@@ -20,7 +20,7 @@ export default async function DriversPage() {
   // Get active driver IDs who are currently on active trips
   const activeTrips = await db.trip.findMany({
     where: {
-      status: "STARTED",
+      status: "IN_PROGRESS",
     },
     select: {
       driverId: true,

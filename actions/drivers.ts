@@ -11,8 +11,12 @@ export async function createDriver(data: {
   phone: string;
   licenseNumber: string;
   licenseExpiry: string;
+  joiningDate: string;
+  shiftStartTime: string;
+  shiftEndTime: string;
+  shiftDuration: string;
   experience: number;
-  shift: string;
+  shift?: string;
   emergencyContact: string;
   password?: string;
 }) {
@@ -28,11 +32,16 @@ export async function createDriver(data: {
         phone: data.phone,
         licenseNumber: data.licenseNumber,
         licenseExpiry: new Date(data.licenseExpiry),
+        joiningDate: new Date(data.joiningDate),
+        shiftStartTime: data.shiftStartTime,
+        shiftEndTime: data.shiftEndTime,
+        shiftDuration: data.shiftDuration,
         experience: Number(data.experience),
-        shift: data.shift,
+        shift: data.shift || "Morning",
         emergencyContact: data.emergencyContact,
         password: hashedPassword,
         role: "DRIVER",
+        status: "OFFLINE",
       },
     });
 
@@ -53,8 +62,12 @@ export async function updateDriver(
     phone: string;
     licenseNumber: string;
     licenseExpiry: string;
+    joiningDate: string;
+    shiftStartTime: string;
+    shiftEndTime: string;
+    shiftDuration: string;
     experience: number;
-    shift: string;
+    shift?: string;
     emergencyContact: string;
   }
 ) {
@@ -68,8 +81,12 @@ export async function updateDriver(
         phone: data.phone,
         licenseNumber: data.licenseNumber,
         licenseExpiry: new Date(data.licenseExpiry),
+        joiningDate: new Date(data.joiningDate),
+        shiftStartTime: data.shiftStartTime,
+        shiftEndTime: data.shiftEndTime,
+        shiftDuration: data.shiftDuration,
         experience: Number(data.experience),
-        shift: data.shift,
+        shift: data.shift || "Morning",
         emergencyContact: data.emergencyContact,
       },
     });

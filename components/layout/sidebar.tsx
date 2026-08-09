@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export function Sidebar({ role }: SidebarProps) {
     { href: "/admin/vehicles", label: t("vehicles"), icon: Truck },
     { href: "/admin/drivers", label: t("drivers"), icon: Users },
     { href: "/admin/trips", label: t("trips"), icon: Route },
+    { href: "/admin/shifts", label: t("shifts"), icon: Clock },
     { href: "/admin/verification", label: t("verification"), icon: FileCheck },
     { href: "/admin/maintenance", label: t("maintenance"), icon: Wrench },
     { href: "/admin/fuel", label: t("fuel"), icon: Fuel },
@@ -53,7 +55,6 @@ export function Sidebar({ role }: SidebarProps) {
     { href: "/driver", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/driver/trip", label: t("trips"), icon: Route },
     { href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
-    { href: "/driver/attendance", label: t("attendance"), icon: CalendarCheck },
     { href: "/driver/issues", label: t("report_issue"), icon: Wrench },
   ];
 

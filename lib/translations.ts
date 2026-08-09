@@ -20,6 +20,16 @@ export const translations = {
     "login": "Login",
     "register": "Register",
     "back": "Back",
+    "shifts": "Shift Assignments",
+    "shift_status": "Shift Status",
+    "shift_start": "Shift Start",
+    "shift_end": "Shift End",
+    "start_shift": "Start Shift",
+    "start_shift_trip": "Start Shift & Trip",
+    "active": "Active",
+    "completed": "Completed",
+    "expired": "Expired",
+    "assign_shift": "Assign Shift",
     
     // Header
     "welcome_back": "Welcome back",
@@ -241,6 +251,16 @@ export const translations = {
     "login": "Kirjaudu sisään",
     "register": "Rekisteröidy",
     "back": "Takaisin",
+    "shifts": "Työvuorot",
+    "shift_status": "Vuoron tila",
+    "shift_start": "Vuoron alku",
+    "shift_end": "Vuoron loppu",
+    "start_shift": "Aloita vuoro",
+    "start_shift_trip": "Aloita vuoro & matka",
+    "active": "Aktiivinen",
+    "completed": "Valmis",
+    "expired": "Vanhentunut",
+    "assign_shift": "Määritä vuoro",
     
     // Header
     "welcome_back": "Tervetuloa takaisin",

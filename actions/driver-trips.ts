@@ -2,155 +2,219 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { TripStatus, VehicleStatus, VerificationStatus } from "@prisma/client";
+import { TripStatus } from "@prisma/client";
 
-// Start a scheduled trip
-export async function startTripAction(tripId: string, vehicleId: string) {
+// Driver self-assigns a new work / trip
+export async function driverCreateWorkAction(
+  driverId: string,
+  data: {
+    purpose: string;
+    pickup: string;
+    destination: string;
+    startGpsUrl?: string;
+    destinationGpsUrl?: string;
+    notes?: string;
+  }
+) {
   try {
-    // 1. Set trip status to STARTED
-    await db.trip.update({
-      where: { id: tripId },
-      data: { status: TripStatus.STARTED },
+    // 1. Verify driver is not offline
+    const driver = await db.user.findUnique({
+      where: { id: driverId },
     });
 
-    // 2. Set vehicle status to ON_TRIP
-    await db.vehicle.update({
-      where: { id: vehicleId },
-      data: { status: VehicleStatus.ON_TRIP },
+    if (!driver || driver.status === "OFFLINE") {
+      return { error: "You must start your shift first." };
+    }
+
+    // 2. Verify driver has an active car assigned
+    const assignedVehicle = await db.vehicle.findFirst({
+      where: {
+        currentDriverId: driverId,
+      },
+    });
+
+    if (!assignedVehicle) {
+      return { error: "You must select an available car first." };
+    }
+
+    // 3. Verify driver has no active trips
+    const activeTrip = await db.trip.findFirst({
+      where: {
+        driverId,
+        status: {
+          in: ["ASSIGNED", "ACCEPTED", "IN_PROGRESS"],
+        },
+      },
+    });
+
+    if (activeTrip) {
+      return { error: "You cannot start another work while already having active work." };
+    }
+
+    // 4. Generate unique trip/work number
+    let tripNumber = "";
+    while (true) {
+      tripNumber = "WRK-" + Math.floor(1000 + Math.random() * 9000);
+      const exists = await db.trip.findUnique({
+        where: { tripNumber },
+      });
+      if (!exists) break;
+    }
+
+    const now = new Date();
+    const mockEndTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours estimated duration
+
+    await db.$transaction(async (tx) => {
+      await tx.trip.create({
+        data: {
+          tripNumber,
+          pickup: data.pickup,
+          destination: data.destination,
+          startTime: now,
+          endTime: mockEndTime,
+          purpose: data.purpose,
+          notes: data.notes || null,
+          startGpsUrl: data.startGpsUrl || null,
+          destinationGpsUrl: data.destinationGpsUrl || null,
+          driverId,
+          vehicleId: assignedVehicle.id,
+          status: "ASSIGNED",
+          assignedBy: "DRIVER",
+          requestedBy: "DRIVER",
+          department: "Operations",
+        },
+      });
     });
 
     revalidatePath("/driver");
     revalidatePath("/driver/trip");
-    revalidatePath("/admin/trips");
     revalidatePath("/admin");
     return { success: true };
   } catch (error: any) {
-    console.error("Start trip error:", error);
-    return { error: error.message || "Failed to start trip" };
+    console.error("Driver self-assign work error:", error);
+    return { error: error.message || "Failed to assign work." };
   }
 }
 
-// Complete trip and submit closing data (atomic transaction)
-export async function closeTripAction(
-  tripId: string,
-  vehicleId: string,
-  closing: {
-    startingOdometer: number;
-    endingOdometer: number;
-    distanceTravelled: number;
-    tripAmount: number;
-    fuelExpense: number;
-    tollExpense: number;
-    parkingCharges: number;
-    otherExpenses: number;
-    remarks: string;
-  },
-  parking: {
-    location: string;
-    address: string;
-    landmark: string;
-    googleMapsLink: string;
-  },
-  condition: {
-    fuelLevel: string;
-    tyreCondition: string;
-    interiorCondition: string;
-    exteriorCondition: string;
-    remarks: string;
-  }
-) {
+// Driver accepts backup work assigned by Admin
+export async function driverAcceptWorkAction(tripId: string) {
   try {
-    if (closing.endingOdometer < closing.startingOdometer) {
-      return { error: "Ending odometer cannot be less than starting odometer." };
-    }
+    await db.trip.update({
+      where: { id: tripId },
+      data: {
+        status: "ACCEPTED",
+      },
+    });
 
-    if (!parking.googleMapsLink || !/^https?:\/\/\S+/.test(parking.googleMapsLink)) {
-      return { error: "A valid Parking Location URL (starting with http:// or https://) is required." };
-    }
+    revalidatePath("/driver");
+    revalidatePath("/driver/trip");
+    revalidatePath("/admin");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Accept work error:", error);
+    return { error: error.message || "Failed to accept work." };
+  }
+}
 
-    // Run as transaction to guarantee data integrity
+// Driver starts work
+export async function driverStartWorkAction(tripId: string, vehicleId: string, driverId: string) {
+  try {
     await db.$transaction(async (tx) => {
-      // 1. Create Trip Closing record
-      await tx.tripClosing.create({
-        data: {
-          tripId,
-          startingOdometer: Number(closing.startingOdometer),
-          endingOdometer: Number(closing.endingOdometer),
-          distanceTravelled: Number(closing.distanceTravelled),
-          tripAmount: Number(closing.tripAmount),
-          fuelExpense: Number(closing.fuelExpense),
-          tollExpense: Number(closing.tollExpense),
-          parkingCharges: Number(closing.parkingCharges),
-          otherExpenses: Number(closing.otherExpenses),
-          remarks: closing.remarks,
-        },
-      });
-
-      // 2. Create Parking Location record
-      await tx.parkingLocation.create({
-        data: {
-          tripId,
-          location: parking.location,
-          address: parking.address,
-          landmark: parking.landmark,
-          googleMapsLink: parking.googleMapsLink,
-        },
-      });
-
-      // 3. Create Vehicle Condition Report
-      await tx.vehicleConditionReport.create({
-        data: {
-          tripId,
-          fuelLevel: condition.fuelLevel,
-          tyreCondition: condition.tyreCondition,
-          interiorCondition: condition.interiorCondition,
-          exteriorCondition: condition.exteriorCondition,
-          remarks: condition.remarks,
-        },
-      });
-
-      // 4. Create Admin Verification record in PENDING status
-      await tx.adminVerification.create({
-        data: {
-          tripId,
-          status: VerificationStatus.PENDING,
-          remarks: "Pending initial audit comparison.",
-        },
-      });
-
-      // 5. Update Trip status to COMPLETED
+      // 1. Update trip status to IN_PROGRESS
       await tx.trip.update({
         where: { id: tripId },
-        data: { status: TripStatus.COMPLETED },
+        data: {
+          status: "IN_PROGRESS",
+          actualStartTime: new Date(),
+        },
       });
 
-      // 6. Update Vehicle status to AVAILABLE and sync Odometer
+      // 2. Set driver status to ON_TRIP
+      await tx.user.update({
+        where: { id: driverId },
+        data: {
+          status: "ON_TRIP",
+        },
+      });
+
+      // 3. Set vehicle status to ON_TRIP
       await tx.vehicle.update({
         where: { id: vehicleId },
         data: {
-          status: VehicleStatus.AVAILABLE,
-          odometer: Number(closing.endingOdometer),
+          status: "ON_TRIP",
+        },
+      });
+    });
+
+    revalidatePath("/driver");
+    revalidatePath("/driver/trip");
+    revalidatePath("/admin");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Start work error:", error);
+    return { error: error.message || "Failed to start work." };
+  }
+}
+
+// Driver completes work
+export async function driverCompleteWorkAction(tripId: string, vehicleId: string, driverId: string) {
+  try {
+    await db.$transaction(async (tx) => {
+      const now = new Date();
+
+      // 1. Get trip start time to calculate duration
+      const trip = await tx.trip.findUnique({
+        where: { id: tripId },
+        select: { actualStartTime: true },
+      });
+
+      let durationMinutes = 0;
+      if (trip?.actualStartTime) {
+        const diffMs = now.getTime() - new Date(trip.actualStartTime).getTime();
+        durationMinutes = Math.round(diffMs / (1000 * 60));
+      }
+
+      // 2. Update trip status to COMPLETED
+      await tx.trip.update({
+        where: { id: tripId },
+        data: {
+          status: "COMPLETED",
+          actualEndTime: now,
+          durationMinutes,
         },
       });
 
-      // 7. Send a notification to administrators
-      // Find a super admin
-      const admin = await tx.user.findFirst({
-        where: { role: "SUPER_ADMIN" },
-        select: { id: true },
+      // 3. Set driver status to AVAILABLE
+      await tx.user.update({
+        where: { id: driverId },
+        data: {
+          status: "AVAILABLE",
+        },
       });
 
-      if (admin) {
-        const trip = await tx.trip.findUnique({
-          where: { id: tripId },
-          select: { tripNumber: true },
-        });
+      // 4. Set vehicle status to AVAILABLE and clear current driver (release car)
+      await tx.vehicle.update({
+        where: { id: vehicleId },
+        data: {
+          status: "AVAILABLE",
+          currentDriverId: null,
+        },
+      });
 
-        await tx.notification.create({
+      // 5. Close CarAssignment
+      const activeAssignment = await tx.carAssignment.findFirst({
+        where: {
+          driverId,
+          vehicleId,
+          releasedAt: null,
+        },
+      });
+
+      if (activeAssignment) {
+        await tx.carAssignment.update({
+          where: { id: activeAssignment.id },
           data: {
-            userId: admin.id,
-            message: `Trip ${trip?.tripNumber || "ID: " + tripId} completed. Pending audit verification.`,
-            type: "VERIFICATION_PENDING",
+            releasedAt: now,
           },
         });
       }
@@ -158,131 +222,72 @@ export async function closeTripAction(
 
     revalidatePath("/driver");
     revalidatePath("/driver/trip");
-    revalidatePath("/admin/verification");
     revalidatePath("/admin");
     return { success: true };
   } catch (error: any) {
-    console.error("Close trip error:", error);
-    return { error: error.message || "Failed to complete trip closure" };
+    console.error("Complete work error:", error);
+    return { error: error.message || "Failed to complete work." };
   }
 }
 
-// Driver reporting issue action
+// Driver reports vehicle issue, marking it OFFLINE
 export async function reportVehicleIssue(
   vehicleId: string,
   driverId: string,
   issueDescription: string
 ) {
   try {
-    // Set vehicle status to BREAKDOWN
-    await db.vehicle.update({
-      where: { id: vehicleId },
-      data: { status: "BREAKDOWN" },
-    });
-
-    // Notify administrators
-    const admin = await db.user.findFirst({
-      where: { role: "SUPER_ADMIN" },
-      select: { id: true },
-    });
-
-    if (admin) {
-      const vehicle = await db.vehicle.findUnique({
+    await db.$transaction(async (tx) => {
+      // Set vehicle status to OFFLINE
+      await tx.vehicle.update({
         where: { id: vehicleId },
-        select: { vehicleNumber: true },
-      });
-
-      await db.notification.create({
         data: {
-          userId: admin.id,
-          message: `Vehicle breakdown reported for ${vehicle?.vehicleNumber || vehicleId}: ${issueDescription}`,
-          type: "BREAKDOWN_REPORTED",
+          status: "OFFLINE",
+          currentDriverId: null,
         },
       });
-    }
+
+      // Close active CarAssignment
+      const activeAssignment = await tx.carAssignment.findFirst({
+        where: {
+          driverId,
+          vehicleId,
+          releasedAt: null,
+        },
+      });
+
+      if (activeAssignment) {
+        await tx.carAssignment.update({
+          where: { id: activeAssignment.id },
+          data: {
+            releasedAt: new Date(),
+          },
+        });
+      }
+
+      // Notify admin
+      const admin = await tx.user.findFirst({
+        where: { role: "SUPER_ADMIN" },
+        select: { id: true },
+      });
+
+      if (admin) {
+        await tx.notification.create({
+          data: {
+            userId: admin.id,
+            message: `Vehicle issue reported, marked OFFLINE: ${issueDescription}`,
+            type: "VEHICLE_OFFLINE",
+          },
+        });
+      }
+    });
 
     revalidatePath("/driver");
     revalidatePath("/admin/vehicles");
     revalidatePath("/admin");
     return { success: true };
   } catch (error: any) {
-    console.error("Breakdown error:", error);
-    return { error: error.message || "Failed to report issue" };
-  }
-}
-
-// Driver accepts a pending unassigned trip
-export async function acceptTripAction(tripId: string, driverId: string) {
-  try {
-    // 1. Fetch the trip
-    const trip = await db.trip.findUnique({
-      where: { id: tripId },
-      include: { vehicle: true },
-    });
-
-    if (!trip) {
-      return { error: "Trip not found." };
-    }
-
-    if (trip.driverId) {
-      return { error: "This job has already been accepted by another driver." };
-    }
-
-    // 2. Check if the driver is already assigned to a trip during this time range
-    const overlap = await db.trip.findFirst({
-      where: {
-        driverId,
-        status: { in: ["ASSIGNED", "APPROVED", "STARTED"] },
-        startTime: { lt: trip.endTime },
-        endTime: { gt: trip.startTime },
-      },
-    });
-
-    if (overlap) {
-      return {
-        error: `You are already assigned to active/scheduled Trip ${overlap.tripNumber} during this time range (${new Date(
-          overlap.startTime
-        ).toLocaleTimeString()} - ${new Date(overlap.endTime).toLocaleTimeString()}).`,
-      };
-    }
-
-    // 3. Assign the driver and change the status to ASSIGNED
-    await db.trip.update({
-      where: { id: tripId },
-      data: {
-        driverId,
-        status: TripStatus.ASSIGNED,
-      },
-    });
-
-    // 4. Send a notification to administrators
-    const admin = await db.user.findFirst({
-      where: { role: "SUPER_ADMIN" },
-      select: { id: true },
-    });
-
-    if (admin) {
-      const driver = await db.user.findUnique({
-        where: { id: driverId },
-        select: { name: true },
-      });
-
-      await db.notification.create({
-        data: {
-          userId: admin.id,
-          message: `Trip ${trip.tripNumber} has been accepted by Driver ${driver?.name || "Unknown"}.`,
-          type: "VEHICLE_ASSIGNMENT",
-        },
-      });
-    }
-
-    revalidatePath("/driver");
-    revalidatePath("/driver/trip");
-    revalidatePath("/admin/trips");
-    revalidatePath("/admin");
-    return { success: true };
-  } catch (error: any) {
-    console.error("Accept trip error:", error);
-    return { error: error.message || "Failed to accept trip" };
+    console.error("Report issue error:", error);
+    return { error: error.message || "Failed to report vehicle issue." };
   }
 }
