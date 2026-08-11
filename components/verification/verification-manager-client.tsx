@@ -83,7 +83,7 @@ export function VerificationManagerClient({ trips }: VerificationManagerProps) {
             const isOdoMismatch = trip.closing ? odometerDifference !== trip.closing.distanceTravelled : false;
             
             const totalExpenses = trip.closing
-              ? trip.closing.fuelExpense + trip.closing.tollExpense + trip.closing.parkingCharges + trip.closing.otherExpenses
+              ? trip.closing.fuelExpense + trip.closing.tollExpense + trip.closing.parkingCharges + trip.closing.otherExpenses + (trip.closing.allowance || 0)
               : 0;
 
             return (
@@ -238,6 +238,11 @@ export function VerificationManagerClient({ trips }: VerificationManagerProps) {
                 <div className="grid grid-cols-4 py-1 border-t border-border/30">
                   <div>Parking Fees</div>
                   <div className="font-mono">${selectedTrip.closing.parkingCharges.toFixed(2)}</div>
+                  <div className="col-span-2 text-muted-foreground italic">Self-claimed</div>
+                </div>
+                <div className="grid grid-cols-4 py-1 border-t border-border/30">
+                  <div>Driver Allowance</div>
+                  <div className="font-mono">${(selectedTrip.closing.allowance || 0).toFixed(2)}</div>
                   <div className="col-span-2 text-muted-foreground italic">Self-claimed</div>
                 </div>
                 <div className="grid grid-cols-4 py-1 border-t border-border/30 font-bold border-b border-border/40 pb-2">

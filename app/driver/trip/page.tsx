@@ -20,11 +20,14 @@ export default async function DriverTripsPage() {
     },
     include: {
       vehicle: true,
+      closing: true,
+      parking: true,
+      conditionReport: true,
     },
     orderBy: {
       startTime: "desc",
     },
   });
 
-  return <DriverTripsClient trips={trips} />;
+  return <DriverTripsClient trips={trips} driverId={session.user.id} />;
 }
