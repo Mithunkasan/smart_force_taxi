@@ -170,6 +170,7 @@ model TripClosing {
   fuelExpense      Float    @default(0.0)
   tollExpense      Float    @default(0.0)
   parkingCharges   Float    @default(0.0)
+  allowance        Float    @default(0.0)
   otherExpenses    Float    @default(0.0)
   billsUrl         String?  // Saved locally or mock path
   receiptsUrl      String?  // Saved locally or mock path

@@ -291,3 +291,305 @@ export async function reportVehicleIssue(
     return { error: error.message || "Failed to report vehicle issue." };
   }
 }
+
+// Driver completes work and logs trip closing details, parking spot, condition report, and allowance
+export async function driverCompleteTripWithDetailsAction(
+  tripId: string,
+  vehicleId: string,
+  driverId: string,
+  closingData: {
+    startingOdometer: number;
+    endingOdometer: number;
+    distanceTravelled: number;
+    tripAmount: number;
+    fuelExpense: number;
+    tollExpense: number;
+    parkingCharges: number;
+    allowance: number;
+    otherExpenses: number;
+    billsUrl?: string;
+    receiptsUrl?: string;
+    remarks?: string;
+  },
+  parkingData: {
+    location: string;
+    address: string;
+    landmark?: string;
+    googleMapsLink?: string;
+  },
+  conditionData: {
+    fuelLevel: string;
+    tyreCondition: string;
+    interiorCondition: string;
+    exteriorCondition: string;
+    remarks?: string;
+  }
+) {
+  try {
+    await db.$transaction(async (tx) => {
+      const now = new Date();
+
+      // 1. Get trip start time to calculate duration
+      const trip = await tx.trip.findUnique({
+        where: { id: tripId },
+        select: { actualStartTime: true },
+      });
+
+      let durationMinutes = 0;
+      if (trip?.actualStartTime) {
+        const diffMs = now.getTime() - new Date(trip.actualStartTime).getTime();
+        durationMinutes = Math.round(diffMs / (1000 * 60));
+      }
+
+      // 2. Update trip status to COMPLETED
+      await tx.trip.update({
+        where: { id: tripId },
+        data: {
+          status: "COMPLETED",
+          actualEndTime: now,
+          durationMinutes,
+        },
+      });
+
+      // 3. Create TripClosing
+      await tx.tripClosing.create({
+        data: {
+          tripId,
+          startingOdometer: closingData.startingOdometer,
+          endingOdometer: closingData.endingOdometer,
+          distanceTravelled: closingData.distanceTravelled,
+          tripAmount: closingData.tripAmount,
+          fuelExpense: closingData.fuelExpense,
+          tollExpense: closingData.tollExpense,
+          parkingCharges: closingData.parkingCharges,
+          allowance: closingData.allowance,
+          otherExpenses: closingData.otherExpenses,
+          billsUrl: closingData.billsUrl || null,
+          receiptsUrl: closingData.receiptsUrl || null,
+          remarks: closingData.remarks || null,
+        },
+      });
+
+      // 4. Create ParkingLocation
+      await tx.parkingLocation.create({
+        data: {
+          tripId,
+          location: parkingData.location,
+          address: parkingData.address,
+          landmark: parkingData.landmark || null,
+          googleMapsLink: parkingData.googleMapsLink || null,
+        },
+      });
+
+      // 5. Create VehicleConditionReport
+      await tx.vehicleConditionReport.create({
+        data: {
+          tripId,
+          fuelLevel: conditionData.fuelLevel,
+          tyreCondition: conditionData.tyreCondition,
+          interiorCondition: conditionData.interiorCondition,
+          exteriorCondition: conditionData.exteriorCondition,
+          remarks: conditionData.remarks || null,
+        },
+      });
+
+      // 6. Create AdminVerification record as PENDING
+      await tx.adminVerification.create({
+        data: {
+          tripId,
+          status: "PENDING",
+        },
+      });
+
+      // 7. Set driver status to AVAILABLE
+      await tx.user.update({
+        where: { id: driverId },
+        data: {
+          status: "AVAILABLE",
+        },
+      });
+
+      // 8. Set vehicle status to AVAILABLE, update its odometer to the ending odometer, and clear driver (release car)
+      await tx.vehicle.update({
+        where: { id: vehicleId },
+        data: {
+          status: "AVAILABLE",
+          odometer: closingData.endingOdometer,
+          currentDriverId: null,
+        },
+      });
+
+      // 9. Close CarAssignment
+      const activeAssignment = await tx.carAssignment.findFirst({
+        where: {
+          driverId,
+          vehicleId,
+          releasedAt: null,
+        },
+      });
+
+      if (activeAssignment) {
+        await tx.carAssignment.update({
+          where: { id: activeAssignment.id },
+          data: {
+            releasedAt: now,
+          },
+        });
+      }
+    });
+
+    revalidatePath("/driver");
+    revalidatePath("/driver/trip");
+    revalidatePath("/admin/verification");
+    revalidatePath("/admin/vehicles");
+    revalidatePath("/admin");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Complete trip with details error:", error);
+    return { error: error.message || "Failed to complete trip with details." };
+  }
+}
+
+// Update trip closing details, parking spot, condition report for an already completed or in-progress trip
+export async function driverUpdateTripDetailsAction(
+  tripId: string,
+  closingData: {
+    startingOdometer: number;
+    endingOdometer: number;
+    distanceTravelled: number;
+    tripAmount: number;
+    fuelExpense: number;
+    tollExpense: number;
+    parkingCharges: number;
+    allowance: number;
+    otherExpenses: number;
+    billsUrl?: string;
+    receiptsUrl?: string;
+    remarks?: string;
+  },
+  parkingData: {
+    location: string;
+    address: string;
+    landmark?: string;
+    googleMapsLink?: string;
+  },
+  conditionData: {
+    fuelLevel: string;
+    tyreCondition: string;
+    interiorCondition: string;
+    exteriorCondition: string;
+    remarks?: string;
+  }
+) {
+  try {
+    await db.$transaction(async (tx) => {
+      // 1. Upsert TripClosing
+      await tx.tripClosing.upsert({
+        where: { tripId },
+        update: {
+          startingOdometer: closingData.startingOdometer,
+          endingOdometer: closingData.endingOdometer,
+          distanceTravelled: closingData.distanceTravelled,
+          fuelExpense: closingData.fuelExpense,
+          tollExpense: closingData.tollExpense,
+          parkingCharges: closingData.parkingCharges,
+          allowance: closingData.allowance,
+          otherExpenses: closingData.otherExpenses,
+          billsUrl: closingData.billsUrl || null,
+          receiptsUrl: closingData.receiptsUrl || null,
+          remarks: closingData.remarks || null,
+        },
+        create: {
+          tripId,
+          startingOdometer: closingData.startingOdometer,
+          endingOdometer: closingData.endingOdometer,
+          distanceTravelled: closingData.distanceTravelled,
+          tripAmount: closingData.tripAmount,
+          fuelExpense: closingData.fuelExpense,
+          tollExpense: closingData.tollExpense,
+          parkingCharges: closingData.parkingCharges,
+          allowance: closingData.allowance,
+          otherExpenses: closingData.otherExpenses,
+          billsUrl: closingData.billsUrl || null,
+          receiptsUrl: closingData.receiptsUrl || null,
+          remarks: closingData.remarks || null,
+        },
+      });
+
+      // 2. Upsert ParkingLocation
+      await tx.parkingLocation.upsert({
+        where: { tripId },
+        update: {
+          location: parkingData.location,
+          address: parkingData.address,
+          landmark: parkingData.landmark || null,
+          googleMapsLink: parkingData.googleMapsLink || null,
+        },
+        create: {
+          tripId,
+          location: parkingData.location,
+          address: parkingData.address,
+          landmark: parkingData.landmark || null,
+          googleMapsLink: parkingData.googleMapsLink || null,
+        },
+      });
+
+      // 3. Upsert VehicleConditionReport
+      await tx.vehicleConditionReport.upsert({
+        where: { tripId },
+        update: {
+          fuelLevel: conditionData.fuelLevel,
+          tyreCondition: conditionData.tyreCondition,
+          interiorCondition: conditionData.interiorCondition,
+          exteriorCondition: conditionData.exteriorCondition,
+          remarks: conditionData.remarks || null,
+        },
+        create: {
+          tripId,
+          fuelLevel: conditionData.fuelLevel,
+          tyreCondition: conditionData.tyreCondition,
+          interiorCondition: conditionData.interiorCondition,
+          exteriorCondition: conditionData.exteriorCondition,
+          remarks: conditionData.remarks || null,
+        },
+      });
+
+      // 4. Ensure AdminVerification exists
+      const existingVerification = await tx.adminVerification.findUnique({
+        where: { tripId },
+      });
+      if (!existingVerification) {
+        await tx.adminVerification.create({
+          data: {
+            tripId,
+            status: "PENDING",
+          },
+        });
+      }
+
+      // 5. Update vehicle odometer
+      const trip = await tx.trip.findUnique({
+        where: { id: tripId },
+        select: { vehicleId: true },
+      });
+      if (trip) {
+        await tx.vehicle.update({
+          where: { id: trip.vehicleId },
+          data: {
+            odometer: closingData.endingOdometer,
+          },
+        });
+      }
+    });
+
+    revalidatePath("/driver");
+    revalidatePath("/driver/trip");
+    revalidatePath("/admin/verification");
+    revalidatePath("/admin/vehicles");
+    revalidatePath("/admin");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Update trip details error:", error);
+    return { error: error.message || "Failed to update trip details." };
+  }
+}
