@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { hashPassword } from "@/lib/auth-utils";
+import { sendDriverRegistrationEmail, sendDriverRegistrationWhatsApp } from "@/lib/notifications";
 
 export async function createDriver(data: {
   name: string;
@@ -44,6 +45,24 @@ export async function createDriver(data: {
         status: "OFFLINE",
       },
     });
+
+    // Send email credentials notification
+    await sendDriverRegistrationEmail(
+      data.email.toLowerCase().trim(),
+      data.name,
+      data.employeeId,
+      defaultPassword
+    );
+
+    // Send WhatsApp credentials notification
+    if (data.phone) {
+      await sendDriverRegistrationWhatsApp(
+        data.phone,
+        data.name,
+        data.email.toLowerCase().trim(),
+        defaultPassword
+      );
+    }
 
     revalidatePath("/admin/drivers");
     return { success: true };

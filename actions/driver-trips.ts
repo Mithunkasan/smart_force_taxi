@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { TripStatus } from "@prisma/client";
+import { TripStatus, Priority } from "@prisma/client";
 
 // Driver self-assigns a new work / trip
 export async function driverCreateWorkAction(
@@ -119,31 +119,90 @@ export async function driverAcceptWorkAction(tripId: string) {
 // Driver starts work
 export async function driverStartWorkAction(tripId: string, vehicleId: string, driverId: string) {
   try {
+    // Fetch the trip booking
+    const trip = await db.trip.findUnique({
+      where: { id: tripId },
+    });
+
+    if (!trip) {
+      return { error: "Trip booking record not found." };
+    }
+
+    const now = new Date();
+    // Enforce scheduled start time
+    if (now < new Date(trip.startTime)) {
+      return { 
+        error: `Cannot start trip before the scheduled start time (${new Date(trip.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).` 
+      };
+    }
+
     await db.$transaction(async (tx) => {
       // 1. Update trip status to IN_PROGRESS
       await tx.trip.update({
         where: { id: tripId },
         data: {
           status: "IN_PROGRESS",
-          actualStartTime: new Date(),
+          actualStartTime: now,
         },
       });
 
       // 2. Set driver status to ON_TRIP
-      await tx.user.update({
+      const driver = await tx.user.update({
         where: { id: driverId },
         data: {
           status: "ON_TRIP",
         },
       });
 
-      // 3. Set vehicle status to ON_TRIP
+      // 3. Set vehicle status to ON_TRIP and set currentDriverId to driverId
       await tx.vehicle.update({
         where: { id: vehicleId },
         data: {
           status: "ON_TRIP",
+          currentDriverId: driverId,
         },
       });
+
+      // 4. Create a CarAssignment record if not already assigned
+      const assignmentExists = await tx.carAssignment.findFirst({
+        where: {
+          driverId,
+          vehicleId,
+          releasedAt: null,
+        },
+      });
+
+      if (!assignmentExists) {
+        await tx.carAssignment.create({
+          data: {
+            driverId,
+            vehicleId,
+            assignedAt: now,
+          },
+        });
+      }
+
+      // 5. Automatically create a DriverShift record (clock in)
+      const activeShift = await tx.driverShift.findFirst({
+        where: {
+          driverId,
+          actualEnd: null,
+        },
+      });
+
+      if (!activeShift && driver) {
+        const todayDateStr = now.toISOString().split("T")[0];
+        await tx.driverShift.create({
+          data: {
+            driverId,
+            date: todayDateStr,
+            shiftStart: driver.shiftStartTime || "06:00 AM",
+            shiftEnd: driver.shiftEndTime || "06:00 PM",
+            duration: driver.shiftDuration || "12 Hours",
+            actualStart: now,
+          },
+        });
+      }
     });
 
     revalidatePath("/driver");
@@ -215,6 +274,23 @@ export async function driverCompleteWorkAction(tripId: string, vehicleId: string
           where: { id: activeAssignment.id },
           data: {
             releasedAt: now,
+          },
+        });
+      }
+
+      // 6. Automatically close DriverShift (clock out)
+      const activeShift = await tx.driverShift.findFirst({
+        where: {
+          driverId,
+          actualEnd: null,
+        },
+      });
+
+      if (activeShift) {
+        await tx.driverShift.update({
+          where: { id: activeShift.id },
+          data: {
+            actualEnd: now,
           },
         });
       }
@@ -436,6 +512,23 @@ export async function driverCompleteTripWithDetailsAction(
           },
         });
       }
+
+      // 10. Automatically close DriverShift (clock out)
+      const activeShift = await tx.driverShift.findFirst({
+        where: {
+          driverId,
+          actualEnd: null,
+        },
+      });
+
+      if (activeShift) {
+        await tx.driverShift.update({
+          where: { id: activeShift.id },
+          data: {
+            actualEnd: now,
+          },
+        });
+      }
     });
 
     revalidatePath("/driver");
@@ -591,5 +684,172 @@ export async function driverUpdateTripDetailsAction(
   } catch (error: any) {
     console.error("Update trip details error:", error);
     return { error: error.message || "Failed to update trip details." };
+  }
+}
+
+// Driver/Admin books a car slot
+export async function bookCarAction(data: {
+  vehicleId: string;
+  driverId: string;
+  startTime: string; // ISO string
+  endTime: string; // ISO string
+  pickup: string;
+  destination: string;
+  purpose: string;
+  notes?: string;
+  assignedBy: "DRIVER" | "ADMIN";
+  requestedBy: string;
+}) {
+  try {
+    const start = new Date(data.startTime);
+    const end = new Date(data.endTime);
+
+    if (start >= end) {
+      return { error: "End time must be after start time." };
+    }
+
+    // 1. Verify vehicle is not offline or in maintenance
+    const vehicle = await db.vehicle.findUnique({
+      where: { id: data.vehicleId },
+    });
+
+    if (!vehicle) {
+      return { error: "Vehicle not found." };
+    }
+
+    if (vehicle.status === "OFFLINE" || vehicle.status === "MAINTENANCE") {
+      return { error: "This vehicle is currently offline or under maintenance." };
+    }
+
+    // 2. Validate vehicle availability / slot conflicts
+    const conflict = await db.trip.findFirst({
+      where: {
+        vehicleId: data.vehicleId,
+        status: {
+          notIn: ["CANCELLED", "COMPLETED"],
+        },
+        OR: [
+          {
+            startTime: { lte: start },
+            endTime: { gt: start },
+          },
+          {
+            startTime: { lt: end },
+            endTime: { gte: end },
+          },
+          {
+            startTime: { gte: start },
+            endTime: { lte: end },
+          },
+        ],
+      },
+    });
+
+    if (conflict) {
+      return { error: "This vehicle is already booked during the selected time slot." };
+    }
+
+    // 3. Validate driver availability / slot conflicts
+    const driverConflict = await db.trip.findFirst({
+      where: {
+        driverId: data.driverId,
+        status: {
+          notIn: ["CANCELLED", "COMPLETED"],
+        },
+        OR: [
+          {
+            startTime: { lte: start },
+            endTime: { gt: start },
+          },
+          {
+            startTime: { lt: end },
+            endTime: { gte: end },
+          },
+          {
+            startTime: { gte: start },
+            endTime: { lte: end },
+          },
+        ],
+      },
+    });
+
+    if (driverConflict) {
+      return { error: "The selected driver already has another booking during this time slot." };
+    }
+
+    // 4. Generate unique trip/work number
+    let tripNumber = "";
+    while (true) {
+      tripNumber = "WRK-" + Math.floor(1000 + Math.random() * 9000);
+      const exists = await db.trip.findUnique({
+        where: { tripNumber },
+      });
+      if (!exists) break;
+    }
+
+    // 5. Create trip/booking
+    await db.$transaction(async (tx) => {
+      await tx.trip.create({
+        data: {
+          tripNumber,
+          pickup: data.pickup,
+          destination: data.destination,
+          startTime: start,
+          endTime: end,
+          purpose: data.purpose,
+          notes: data.notes || null,
+          driverId: data.driverId,
+          vehicleId: data.vehicleId,
+          status: data.assignedBy === "ADMIN" ? "ASSIGNED" : "ACCEPTED",
+          assignedBy: data.assignedBy,
+          requestedBy: data.requestedBy,
+          department: "Operations",
+        },
+      });
+
+      // 6. Create Notification for the driver
+      if (data.assignedBy === "ADMIN") {
+        await tx.notification.create({
+          data: {
+            userId: data.driverId,
+            message: `Admin assigned vehicle ${vehicle.vehicleNumber} for you from ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+            type: "VEHICLE_ASSIGNMENT",
+          },
+        });
+      } else {
+        await tx.notification.create({
+          data: {
+            userId: data.driverId,
+            message: `You successfully booked vehicle ${vehicle.vehicleNumber} from ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+            type: "VEHICLE_ASSIGNED",
+          },
+        });
+
+        // Notify super admin
+        const admin = await tx.user.findFirst({
+          where: { role: "SUPER_ADMIN" },
+          select: { id: true },
+        });
+        if (admin) {
+          await tx.notification.create({
+            data: {
+              userId: admin.id,
+              message: `Driver successfully booked vehicle ${vehicle.vehicleNumber} from ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+              type: "SHIFT_STARTED",
+            },
+          });
+        }
+      }
+    });
+
+    revalidatePath("/driver");
+    revalidatePath("/driver/trip");
+    revalidatePath("/admin/trips");
+    revalidatePath("/admin/vehicles");
+    revalidatePath("/admin");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Book car action error:", error);
+    return { error: error.message || "Failed to book vehicle." };
   }
 }

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { Sidebar } from "@/components/layout/sidebar";
+import { DriverNavbar } from "@/components/layout/driver-navbar";
 import { Header } from "@/components/layout/header";
 
 export default async function DriverLayout({
@@ -15,20 +15,18 @@ export default async function DriverLayout({
   }
 
   return (
-    <div className="fixed inset-0 flex h-full w-full overflow-hidden bg-background">
-      <Sidebar role="DRIVER" />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header
-          user={{
-            name: session.user.name || "",
-            email: session.user.email || "",
-            role: "DRIVER",
-          }}
-        />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {children}
-        </main>
-      </div>
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
+      <Header
+        user={{
+          name: session.user.name || "",
+          email: session.user.email || "",
+          role: "DRIVER",
+        }}
+      />
+      <DriverNavbar />
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
+        {children}
+      </main>
     </div>
   );
 }

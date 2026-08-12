@@ -79,6 +79,7 @@ model User {
   notifications     Notification[]
   shifts            DriverShift[]
   carAssignments    CarAssignment[]
+  weeklyLogs        WeeklyLog[]
   
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -288,5 +289,18 @@ model CarAssignment {
   assignedAt    DateTime  @default(now())
   releasedAt    DateTime?
   createdAt     DateTime  @default(now())
+}
+
+model WeeklyLog {
+  id         String   @id @default(uuid())
+  driverId   String
+  driver     User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  imageUrl   String
+  uploadedAt DateTime @default(now())
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([driverId])
 }
 
