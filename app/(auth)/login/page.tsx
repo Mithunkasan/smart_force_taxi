@@ -163,12 +163,12 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-4 text-center text-xs">
+          {/* <div className="mt-4 text-center text-xs">
             <span className="text-muted-foreground">{t("dont_have_account")} </span>
             <a href="/register" className="text-primary font-semibold hover:underline">
               {t("register_now")}
             </a>
-          </div>
+          </div>   */}
 
           {/* Quick Access Info for Testing */}
           <div className="mt-6 border-t border-border pt-4 text-center">

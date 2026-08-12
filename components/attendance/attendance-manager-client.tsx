@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Attendance, User } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { checkInDriver, checkOutDriver } from "@/actions/attendance";
 import { CalendarCheck, Clock, ShieldAlert, ArrowRightLeft } from "lucide-react";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface AttendanceManagerProps {
   attendanceLogs: (Attendance & {
@@ -16,8 +17,14 @@ interface AttendanceManagerProps {
 }
 
 export function AttendanceManagerClient({ attendanceLogs, drivers }: AttendanceManagerProps) {
+  const { t } = useTranslation();
   const [selectedDriverId, setSelectedDriverId] = useState(drivers[0]?.id || "");
   const [isPending, startTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleAdminCheckIn = () => {
     if (!selectedDriverId) return;
@@ -43,19 +50,19 @@ export function AttendanceManagerClient({ attendanceLogs, drivers }: AttendanceM
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Attendance Tracker</h2>
-          <p className="text-sm text-muted-foreground">Monitor driver shifts, track working hours, and review overtime logs.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("attendance_manager")}</h2>
+          <p className="text-sm text-muted-foreground">{t("attendance_desc")}</p>
         </div>
       </div>
 
       {/* Manual Clock-in console for administrators */}
       <div className="rounded-xl border border-border bg-card p-6 shadow-sm glass">
         <h3 className="font-semibold text-sm mb-3 flex items-center gap-1.5 text-foreground">
-          <ArrowRightLeft className="h-4.5 w-4.5 text-primary" /> Admin Check-In Console
+          <ArrowRightLeft className="h-4.5 w-4.5 text-primary" /> {t("admin_checkin_console")}
         </h3>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-4 max-w-xl">
           <div className="flex-1 space-y-1">
-            <label className="text-xs text-muted-foreground font-semibold">Select Driver</label>
+            <label className="text-xs text-muted-foreground font-semibold">{t("select_driver")}</label>
             <select
               className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={selectedDriverId}
@@ -69,7 +76,7 @@ export function AttendanceManagerClient({ attendanceLogs, drivers }: AttendanceM
             </select>
           </div>
           <Button onClick={handleAdminCheckIn} disabled={isPending} className="h-10">
-            Check In Driver
+            {t("check_in_driver")}
           </Button>
         </div>
       </div>
@@ -78,13 +85,13 @@ export function AttendanceManagerClient({ attendanceLogs, drivers }: AttendanceM
       <TableContainer>
         <TableHeader>
           <TableRow>
-            <TableHead>Driver Details</TableHead>
-            <TableHead>Shift Start (Clock In)</TableHead>
-            <TableHead>Shift End (Clock Out)</TableHead>
-            <TableHead>Working Hours</TableHead>
-            <TableHead>Overtime</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead>{t("driver_details")}</TableHead>
+            <TableHead>{t("shift_start_clockin")}</TableHead>
+            <TableHead>{t("shift_end_clockout")}</TableHead>
+            <TableHead>{t("working_hours")}</TableHead>
+            <TableHead>{t("overtime")}</TableHead>
+            <TableHead>{t("status")}</TableHead>
+            <TableHead className="text-right">{t("actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -96,29 +103,41 @@ export function AttendanceManagerClient({ attendanceLogs, drivers }: AttendanceM
               </TableCell>
               <TableCell>
                 <div className="text-xs font-medium">
-                  {new Date(log.checkIn).toLocaleDateString()} at{" "}
-                  {new Date(log.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {mounted ? (
+                    <>
+                      {new Date(log.checkIn).toLocaleDateString()} at{" "}
+                      {new Date(log.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </div>
               </TableCell>
               <TableCell>
                 {log.checkOut ? (
                   <div className="text-xs font-medium">
-                    {new Date(log.checkOut).toLocaleDateString()} at{" "}
-                    {new Date(log.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {mounted ? (
+                      <>
+                        {new Date(log.checkOut).toLocaleDateString()} at{" "}
+                        {new Date(log.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </>
+                    ) : (
+                      ""
+                    )}
                   </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground italic">On Duty</span>
+                  <span className="text-xs text-muted-foreground italic">{t("on_duty")}</span>
                 )}
               </TableCell>
               <TableCell className="font-mono text-xs font-semibold">
-                {log.checkOut ? `${log.workingHours} hrs` : "Running..."}
+                {log.checkOut ? `${log.workingHours} hrs` : t("running")}
               </TableCell>
               <TableCell className="font-mono text-xs text-yellow-600 dark:text-yellow-400 font-semibold">
                 {log.overtime > 0 ? `${log.overtime} hrs` : "—"}
               </TableCell>
               <TableCell>
                 <Badge variant={log.checkOut ? "success" : "info"}>
-                  {log.checkOut ? "Completed" : "Clocked In"}
+                  {log.checkOut ? t("completed") : t("clocked_in")}
                 </Badge>
               </TableCell>
               <TableCell className="text-right">
@@ -130,7 +149,7 @@ export function AttendanceManagerClient({ attendanceLogs, drivers }: AttendanceM
                     onClick={() => handleAdminCheckOut(log.driverId)}
                     disabled={isPending}
                   >
-                    Check Out
+                    {t("check_out")}
                   </Button>
                 )}
               </TableCell>
@@ -139,7 +158,7 @@ export function AttendanceManagerClient({ attendanceLogs, drivers }: AttendanceM
           {attendanceLogs.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                No attendance logs recorded for today.
+                {t("no_attendance_logs")}
               </TableCell>
             </TableRow>
           )}

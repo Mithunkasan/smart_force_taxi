@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, Truck, MapPin, Compass, ExternalLink, Users, Milestone } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,12 @@ interface AvailableVehiclesClientProps {
 }
 
 export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientProps) {
+  const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const filteredVehicles = vehicles.filter((v) => {
     const searchString = `${v.name} ${v.brand} ${v.model} ${v.vehicleNumber} ${
@@ -119,7 +124,7 @@ export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientPro
                       )}
 
                       <div className="text-[10px] text-muted-foreground pt-1 border-t border-border/30">
-                        Parked at: {new Date(vehicle.parkingLocation.parkingTime).toLocaleString()}
+                        Parked at: {mounted ? new Date(vehicle.parkingLocation.parkingTime).toLocaleString() : "Loading..."}
                       </div>
                     </div>
                   ) : (

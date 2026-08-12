@@ -36,13 +36,23 @@ export default async function DriverDashboard() {
     },
   });
 
-  // Find all available vehicles
-  const availableVehicles = await db.vehicle.findMany({
-    where: {
-      status: "AVAILABLE",
-    },
+  // Find all vehicles
+  const vehicles = await db.vehicle.findMany({
     orderBy: {
       name: "asc",
+    },
+  });
+
+  // Find all bookings (trips) that are not completed/cancelled
+  const bookings = await db.trip.findMany({
+    where: {
+      status: {
+        notIn: ["CANCELLED", "COMPLETED"],
+      },
+    },
+    include: {
+      driver: true,
+      vehicle: true,
     },
   });
 
@@ -64,7 +74,8 @@ export default async function DriverDashboard() {
       driver={driver}
       activeShift={activeShift}
       assignedVehicle={assignedVehicle}
-      availableVehicles={availableVehicles}
+      vehicles={vehicles}
+      bookings={bookings}
       activeTrip={activeTrip}
     />
   );

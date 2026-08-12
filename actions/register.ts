@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth-utils";
+import { sendDriverRegistrationEmail, sendDriverRegistrationWhatsApp } from "@/lib/notifications";
 
 export async function registerUser(data: {
   name: string;
@@ -65,6 +66,24 @@ export async function registerUser(data: {
         role: "DRIVER", // Default self-registered role
       },
     });
+
+    // Send email credentials notification
+    await sendDriverRegistrationEmail(
+      data.email.toLowerCase().trim(),
+      data.name,
+      employeeId,
+      data.password
+    );
+
+    // Send WhatsApp credentials notification
+    if (data.phone) {
+      await sendDriverRegistrationWhatsApp(
+        data.phone,
+        data.name,
+        data.email.toLowerCase().trim(),
+        data.password
+      );
+    }
 
     return { success: true };
   } catch (error: any) {

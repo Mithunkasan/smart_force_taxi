@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { TripStatus, Priority } from "@prisma/client";
+import { sendBookingCancellationEmail } from "@/lib/notifications";
 
 export async function createTrip(data: {
   tripNumber: string;
@@ -190,6 +191,22 @@ export async function updateTrip(
           },
         });
 
+        // Trigger email notification to driver on cancellation
+        if (data.status === "CANCELLED" && data.driverId) {
+          const driverUser = await tx.user.findUnique({ where: { id: data.driverId } });
+          const vehicleObj = await tx.vehicle.findUnique({ where: { id: data.vehicleId } });
+          if (driverUser?.email && vehicleObj) {
+            await sendBookingCancellationEmail(
+              driverUser.email,
+              driverUser.name,
+              data.tripNumber,
+              vehicleObj.name,
+              start,
+              end
+            );
+          }
+        }
+
         if (data.driverId) {
           await tx.user.update({
             where: { id: data.driverId },
@@ -230,9 +247,21 @@ export async function deleteTrip(id: string) {
     await db.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({
         where: { id },
+        include: { driver: true, vehicle: true },
       });
 
       if (trip && trip.status !== "COMPLETED" && trip.status !== "CANCELLED") {
+        // Send email cancellation notice
+        if (trip.driver?.email && trip.vehicle) {
+          await sendBookingCancellationEmail(
+            trip.driver.email,
+            trip.driver.name,
+            trip.tripNumber,
+            trip.vehicle.name,
+            trip.startTime,
+            trip.endTime
+          );
+        }
         // Release vehicle
         await tx.vehicle.update({
           where: { id: trip.vehicleId },

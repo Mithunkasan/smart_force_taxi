@@ -39,16 +39,10 @@ export function Sidebar({ role }: SidebarProps) {
   const logoSrc = theme === "dark" ? "/logo.png" : "/logo1.png";
 
   const adminLinks = [
-    { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/admin/vehicles", label: t("vehicles"), icon: Truck },
     { href: "/admin/drivers", label: t("drivers"), icon: Users },
-    { href: "/admin/trips", label: t("trips"), icon: Route },
-    { href: "/admin/shifts", label: t("shifts"), icon: Clock },
-    { href: "/admin/verification", label: t("verification"), icon: FileCheck },
-    { href: "/admin/maintenance", label: t("maintenance"), icon: Wrench },
-    { href: "/admin/fuel", label: t("fuel"), icon: Fuel },
-    { href: "/admin/attendance", label: t("attendance"), icon: CalendarCheck },
-    { href: "/admin/reports", label: t("reports"), icon: FileSpreadsheet },
+    { href: "/admin/trips", label: t("booking_history"), icon: FileSpreadsheet },
+    { href: "/admin/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
   ];
 
   const driverLinks = [
@@ -56,6 +50,7 @@ export function Sidebar({ role }: SidebarProps) {
     { href: "/driver/trip", label: t("trips"), icon: Route },
     { href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
     { href: "/driver/issues", label: t("report_issue"), icon: Wrench },
+    { href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
   ];
 
   const links = role === "DRIVER" ? driverLinks : adminLinks;

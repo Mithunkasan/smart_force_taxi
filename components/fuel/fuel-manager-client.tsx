@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { FuelLog, Vehicle, User } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { logFuel, deleteFuelLog } from "@/actions/fuel";
 import { Fuel, Plus, Trash2, Calendar, DollarSign, RefreshCw } from "lucide-react";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface FuelManagerProps {
   logs: (FuelLog & {
@@ -20,8 +21,14 @@ interface FuelManagerProps {
 }
 
 export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps) {
+  const { t } = useTranslation();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Form State
@@ -71,7 +78,7 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
   };
 
   const handleDelete = (id: string) => {
-    if (!confirm("Are you sure you want to delete this fuel log?")) return;
+    if (!confirm(t("delete_fuel_confirm"))) return;
     startTransition(async () => {
       const res = await deleteFuelLog(id);
       if (res.error) {
@@ -85,12 +92,12 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Fuel Registry</h2>
-          <p className="text-sm text-muted-foreground">Monitor fleet fuel expenditures, quantities, and real-time fuel efficiency.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("fuel_manager")}</h2>
+          <p className="text-sm text-muted-foreground">{t("fuel_desc")}</p>
         </div>
         <Button onClick={handleOpenAdd} className="sm:self-start">
           <Plus className="h-4.5 w-4.5 mr-2" />
-          Log Refuel Event
+          {t("log_refuel")}
         </Button>
       </div>
 
@@ -98,13 +105,13 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
       <TableContainer>
         <TableHeader>
           <TableRow>
-            <TableHead>Refuel Date</TableHead>
-            <TableHead>Vehicle</TableHead>
-            <TableHead>Driver</TableHead>
-            <TableHead>Quantity (Liters)</TableHead>
-            <TableHead>Total Cost</TableHead>
-            <TableHead>Fuel Efficiency</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead>{t("refuel_date")}</TableHead>
+            <TableHead>{t("vehicle")}</TableHead>
+            <TableHead>{t("driver")}</TableHead>
+            <TableHead>{t("amount_litres")}</TableHead>
+            <TableHead>{t("cost")}</TableHead>
+            <TableHead>{t("efficiency")}</TableHead>
+            <TableHead className="text-right">{t("actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -114,8 +121,14 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
                 <div className="text-xs flex items-center gap-1.5 font-medium">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>
-                    {new Date(log.date).toLocaleDateString()} ·{" "}
-                    {new Date(log.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {mounted ? (
+                      <>
+                        {new Date(log.date).toLocaleDateString()} ·{" "}
+                        {new Date(log.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </>
+                    ) : (
+                      ""
+                    )}
                   </span>
                 </div>
               </TableCell>
@@ -151,7 +164,7 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
           {logs.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                No refuel events logged.
+                {t("no_refuel_events")}
               </TableCell>
             </TableRow>
           )}
@@ -159,7 +172,7 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
       </TableContainer>
 
       {/* Log Refuel Dialog */}
-      <Dialog isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title="Log Fuel Refuel Event">
+      <Dialog isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={t("log_refuel")}>
         <form onSubmit={handleFormSubmit} className="space-y-4">
           {formError && (
             <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600">

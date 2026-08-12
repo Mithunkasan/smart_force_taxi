@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Trip, User, Vehicle, TripStatus, Priority } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createTrip, updateTrip, deleteTrip } from "@/actions/trips";
 import { Search, Plus, Edit2, Trash2, Eye, MapPin, Calendar, Clock, AlertCircle } from "lucide-react";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface TripManagerProps {
   trips: (Trip & {
@@ -20,8 +21,14 @@ interface TripManagerProps {
 }
 
 export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps) {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Dialog States
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -158,8 +165,8 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Trips & Dispatch</h2>
-          <p className="text-sm text-muted-foreground">Monitor routes, check active driver rosters, and verify trip diagnostics.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("trip_manager")}</h2>
+          <p className="text-sm text-muted-foreground">{t("trip_desc")}</p>
         </div>
       </div>
 
@@ -168,7 +175,7 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
           <Input
-            placeholder="Search by trip number, pickup, destination, driver..."
+            placeholder={t("search_trips")}
             className="pl-10 bg-card"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -183,7 +190,19 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
               onClick={() => setStatusFilter(status)}
               className="capitalize text-xs"
             >
-              {status.toLowerCase().replace("_", " ")}
+              {status === "ALL" 
+                ? t("all_statuses") 
+                : status === "PENDING" 
+                  ? t("pending") 
+                  : status === "ASSIGNED" 
+                    ? t("assigned") 
+                    : status === "ACCEPTED" 
+                      ? t("accepted") 
+                      : status === "IN_PROGRESS" 
+                        ? t("in_progress") 
+                        : status === "COMPLETED" 
+                          ? t("completed") 
+                          : t("cancelled")}
             </Button>
           ))}
         </div>
@@ -193,14 +212,14 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
       <TableContainer>
         <TableHeader>
           <TableRow>
-            <TableHead>Trip Number</TableHead>
-            <TableHead>Requestor</TableHead>
-            <TableHead>Route Details</TableHead>
-            <TableHead>Date & Time</TableHead>
-            <TableHead>Driver & Vehicle</TableHead>
-            <TableHead>Priority</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead>{t("trip_number")}</TableHead>
+            <TableHead>{t("requestor")}</TableHead>
+            <TableHead>{t("route_details")}</TableHead>
+            <TableHead>{t("date_time")}</TableHead>
+            <TableHead>{t("driver_vehicle")}</TableHead>
+            <TableHead>{t("priority")}</TableHead>
+            <TableHead>{t("status")}</TableHead>
+            <TableHead className="text-right">{t("actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -225,17 +244,21 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
                 <div className="text-[10px] space-y-0.5">
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span>Start: {new Date(trip.startTime).toLocaleDateString()} {new Date(trip.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                      {t("start_label") || "Start"}: {mounted ? `${new Date(trip.startTime).toLocaleDateString()} ${new Date(trip.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span>End: {new Date(trip.endTime).toLocaleDateString()} {new Date(trip.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                      {t("end_label") || "End"}: {mounted ? `${new Date(trip.endTime).toLocaleDateString()} ${new Date(trip.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}
+                    </span>
                   </div>
                 </div>
               </TableCell>
               <TableCell>
                 <div className="text-xs">
-                  <span className="font-medium text-foreground">{trip.driver?.name || "Unassigned"}</span>
+                  <span className="font-medium text-foreground">{trip.driver?.name || t("unassigned")}</span>
                   <span className="block text-[10px] text-muted-foreground font-mono">{trip.vehicle.vehicleNumber} ({trip.vehicle.name})</span>
                 </div>
               </TableCell>
@@ -258,7 +281,17 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
                       : "warning"
                   }
                 >
-                  {trip.status.replace("_", " ")}
+                  {trip.status === "PENDING" 
+                    ? t("pending") 
+                    : trip.status === "ASSIGNED" 
+                      ? t("assigned") 
+                      : trip.status === "ACCEPTED" 
+                        ? t("accepted") 
+                        : trip.status === "IN_PROGRESS" 
+                          ? t("in_progress") 
+                          : trip.status === "COMPLETED" 
+                            ? t("completed") 
+                            : t("cancelled")}
                 </Badge>
               </TableCell>
               <TableCell className="text-right">
@@ -281,7 +314,7 @@ export function TripManagerClient({ trips, drivers, vehicles }: TripManagerProps
           {filteredTrips.length === 0 && (
             <TableRow>
               <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                No trips scheduled.
+                {t("no_trips")}
               </TableCell>
             </TableRow>
           )}

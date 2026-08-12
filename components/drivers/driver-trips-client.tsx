@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useTransition, useEffect } from "react";
 import { Trip, Vehicle, TripClosing, ParkingLocation, VehicleConditionReport } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,11 +22,24 @@ interface DriverTripsProps {
 }
 
 export function DriverTripsClient({ trips, driverId }: DriverTripsProps) {
+  const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isPending, startTransition] = useTransition();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<typeof trips[0] | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const formatDateTime = (dateVal: string | Date | null | undefined) => {
+    if (!dateVal) return "—";
+    if (!mounted) {
+      return new Date(dateVal).toISOString().substring(0, 19).replace("T", " ");
+    }
+    return new Date(dateVal).toLocaleString();
+  };
 
   const [closingData, setClosingData] = useState({
     endingOdometer: "",
@@ -268,10 +281,10 @@ export function DriverTripsClient({ trips, driverId }: DriverTripsProps) {
                 </TableCell>
                 <TableCell className="text-xs">
                   <div className="text-muted-foreground">
-                    Start: {trip.actualStartTime ? new Date(trip.actualStartTime).toLocaleString() : "N/A"}
+                    Start: {formatDateTime(trip.actualStartTime)}
                   </div>
                   <div className="text-muted-foreground mt-0.5">
-                    End: {trip.actualEndTime ? new Date(trip.actualEndTime).toLocaleString() : "N/A"}
+                    End: {formatDateTime(trip.actualEndTime)}
                   </div>
                 </TableCell>
                 <TableCell className="text-xs font-mono">

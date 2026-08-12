@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
-import { Vehicle, User, VehicleStatus } from "@prisma/client";
+import React, { useState, useEffect, useTransition } from "react";
+import { Vehicle, User, VehicleStatus, Trip } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,22 +9,32 @@ import { Dialog } from "@/components/ui/dialog";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createVehicle, updateVehicle, deleteVehicle } from "@/actions/vehicles";
 import { Search, Plus, Edit2, Trash2, Eye, Calendar, UserCheck, Milestone } from "lucide-react";
+import { CarBookingGrid } from "./car-booking-grid";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface VehicleManagerProps {
   vehicles: (Vehicle & {
     currentDriver: User | null;
   })[];
   drivers: User[];
+  bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
 }
 
-export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps) {
+export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleManagerProps) {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // Dialog States
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [selectedVehicleForBooking, setSelectedVehicleForBooking] = useState<Vehicle | null>(null);
   
   // Active items
   const [selectedVehicle, setSelectedVehicle] = useState<(Vehicle & { currentDriver: User | null }) | null>(null);
@@ -169,19 +179,19 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
     return matchesSearch && matchesStatus;
   });
 
-  const getVehicleStatusBadge = (status: VehicleStatus) => {
+  const getStatusLabel = (status: VehicleStatus) => {
     switch (status) {
       case "AVAILABLE":
-        return <Badge variant="success">Available</Badge>;
+        return <Badge variant="success">{t("available")}</Badge>;
       case "ASSIGNED":
-        return <Badge variant="secondary">Assigned</Badge>;
+        return <Badge variant="secondary">{t("assigned")}</Badge>;
       case "ON_TRIP":
-        return <Badge variant="info">On Trip</Badge>;
+        return <Badge variant="info">{t("on_trip")}</Badge>;
       case "MAINTENANCE":
-        return <Badge variant="warning">Maintenance</Badge>;
+        return <Badge variant="warning">{t("maintenance")}</Badge>;
       case "OFFLINE":
       default:
-        return <Badge variant="danger">Offline</Badge>;
+        return <Badge variant="danger">{t("offline")}</Badge>;
     }
   };
 
@@ -190,12 +200,12 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
       {/* Title & Register Button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Cars / Vehicles</h2>
-          <p className="text-sm text-muted-foreground">Manage your vehicle registry, ownership status, and maintenance diagnostics.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("vehicle_manager")}</h2>
+          <p className="text-sm text-muted-foreground">{t("vehicle_manager_desc")}</p>
         </div>
         <Button onClick={handleOpenAdd} className="sm:self-start">
           <Plus className="h-4.5 w-4.5 mr-2" />
-          Register Car
+          {t("add_vehicle")}
         </Button>
       </div>
 
@@ -204,7 +214,7 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
           <Input
-            placeholder="Search by plate number, model, brand, type..."
+            placeholder={t("search_vehicles")}
             className="pl-10 bg-card"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -219,7 +229,17 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
               onClick={() => setStatusFilter(status)}
               className="capitalize"
             >
-              {status.toLowerCase().replace("_", " ")}
+              {status === "ALL" 
+                ? t("all_statuses") 
+                : status === "AVAILABLE" 
+                  ? t("available") 
+                  : status === "ASSIGNED" 
+                    ? t("assigned") 
+                    : status === "ON_TRIP" 
+                      ? t("on_trip") 
+                      : status === "MAINTENANCE" 
+                        ? t("maintenance") 
+                        : t("offline")}
             </Button>
           ))}
         </div>
@@ -229,14 +249,14 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
       <TableContainer>
         <TableHeader>
           <TableRow>
-            <TableHead>Car Details</TableHead>
-            <TableHead>Plate Number</TableHead>
-            <TableHead>Car Type</TableHead>
-            <TableHead>Own / Rental</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Odometer</TableHead>
-            <TableHead>Current Driver</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead>{t("vehicle_details")}</TableHead>
+            <TableHead>{t("vehicle_number")}</TableHead>
+            <TableHead>{t("car_type")}</TableHead>
+            <TableHead>{t("ownership_type")}</TableHead>
+            <TableHead>{t("status")}</TableHead>
+            <TableHead>{t("odometer")}</TableHead>
+            <TableHead>{t("current_driver")}</TableHead>
+            <TableHead className="text-right">{t("actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -261,7 +281,7 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 </Badge>
               </TableCell>
               <TableCell>
-                {getVehicleStatusBadge(vehicle.status)}
+                {getStatusLabel(vehicle.status)}
               </TableCell>
               <TableCell className="font-mono text-xs">
                 {vehicle.odometer.toLocaleString()} km
@@ -273,11 +293,14 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                     <span className="block text-[10px] text-muted-foreground">{vehicle.currentDriver.employeeId}</span>
                   </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground">Unassigned</span>
+                  <span className="text-xs text-muted-foreground">{t("unassigned")}</span>
                 )}
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-1.5">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" title={t("book_slot")} onClick={() => setSelectedVehicleForBooking(vehicle)}>
+                    <Calendar className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDetails(vehicle)}>
                     <Eye className="h-4 w-4" />
                   </Button>
@@ -518,7 +541,7 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
                 <h3 className="text-xl font-bold">{selectedVehicle.name}</h3>
                 <p className="text-sm text-muted-foreground">{selectedVehicle.brand} {selectedVehicle.model} ({selectedVehicle.year})</p>
               </div>
-              {getVehicleStatusBadge(selectedVehicle.status)}
+              {getStatusLabel(selectedVehicle.status)}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -608,6 +631,21 @@ export function VehicleManagerClient({ vehicles, drivers }: VehicleManagerProps)
           </div>
         )}
       </Dialog>
+
+      {/* Car Slot Booking Calendar Dialog */}
+      {selectedVehicleForBooking && (
+        <Dialog isOpen={!!selectedVehicleForBooking} onClose={() => setSelectedVehicleForBooking(null)} title="Car Slot Booking Calendar" className="max-w-4xl">
+          <CarBookingGrid
+            vehicle={selectedVehicleForBooking}
+            bookings={bookings.filter((b) => b.vehicleId === selectedVehicleForBooking.id)}
+            drivers={drivers}
+            currentUserId=""
+            currentUserRole="ADMIN"
+            currentUserName="Admin"
+            onClose={() => setSelectedVehicleForBooking(null)}
+          />
+        </Dialog>
+      )}
     </div>
   );
 }

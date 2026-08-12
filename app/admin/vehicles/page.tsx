@@ -23,5 +23,17 @@ export default async function VehiclesPage() {
     },
   });
 
-  return <VehicleManagerClient vehicles={vehicles} drivers={drivers} />;
+  const bookings = await db.trip.findMany({
+    where: {
+      status: {
+        notIn: ["CANCELLED", "COMPLETED"],
+      },
+    },
+    include: {
+      driver: true,
+      vehicle: true,
+    },
+  });
+
+  return <VehicleManagerClient vehicles={vehicles} drivers={drivers} bookings={bookings} />;
 }

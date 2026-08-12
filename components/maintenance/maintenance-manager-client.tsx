@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import { Maintenance, Vehicle } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { logMaintenance, completeMaintenance, deleteMaintenance } from "@/actions/maintenance";
 import { Wrench, Plus, CheckCircle, Trash2, Calendar, DollarSign } from "lucide-react";
+import { useTranslation } from "@/components/layout/language-provider";
 
 interface MaintenanceManagerProps {
   logs: (Maintenance & {
@@ -18,8 +19,14 @@ interface MaintenanceManagerProps {
 }
 
 export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerProps) {
+  const { t } = useTranslation();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Form State
@@ -64,7 +71,7 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
   };
 
   const handleComplete = (id: string, vehicleId: string) => {
-    if (!confirm("Are you sure this vehicle is repaired and ready for dispatch?")) return;
+    if (!confirm(t("complete_service_confirm"))) return;
     startTransition(async () => {
       const res = await completeMaintenance(id, vehicleId);
       if (res.error) {
@@ -74,7 +81,7 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
   };
 
   const handleDelete = (id: string) => {
-    if (!confirm("Are you sure you want to delete this maintenance log?")) return;
+    if (!confirm(t("delete_maintenance_confirm"))) return;
     startTransition(async () => {
       const res = await deleteMaintenance(id);
       if (res.error) {
@@ -88,12 +95,12 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">Maintenance</h2>
-          <p className="text-sm text-muted-foreground">Monitor vehicle services, log repair expenditures, and set future checks.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("maintenance_manager")}</h2>
+          <p className="text-sm text-muted-foreground">{t("maintenance_desc")}</p>
         </div>
         <Button onClick={handleOpenAdd} className="sm:self-start">
           <Plus className="h-4.5 w-4.5 mr-2" />
-          Log Service Event
+          {t("log_maintenance")}
         </Button>
       </div>
 
@@ -101,13 +108,13 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
       <TableContainer>
         <TableHeader>
           <TableRow>
-            <TableHead>Vehicle</TableHead>
-            <TableHead>Service Record Details</TableHead>
-            <TableHead>Next Service Date</TableHead>
-            <TableHead>Replacements Done</TableHead>
-            <TableHead>Repair Cost</TableHead>
-            <TableHead>Garage Location</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead>{t("vehicle")}</TableHead>
+            <TableHead>{t("service_details")}</TableHead>
+            <TableHead>{t("next_service_date")}</TableHead>
+            <TableHead>{t("replacements_done")}</TableHead>
+            <TableHead>{t("cost")}</TableHead>
+            <TableHead>{t("garage_location")}</TableHead>
+            <TableHead className="text-right">{t("actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -117,7 +124,7 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
                 <div className="font-semibold text-foreground">{log.vehicle.name}</div>
                 <div className="text-xs text-muted-foreground font-mono">{log.vehicle.vehicleNumber}</div>
                 {log.vehicle.status === "MAINTENANCE" && (
-                  <Badge variant="warning" className="mt-1">In Workshop</Badge>
+                  <Badge variant="warning" className="mt-1">{t("in_workshop")}</Badge>
                 )}
               </TableCell>
               <TableCell className="max-w-[200px] truncate text-xs" title={log.serviceHistory}>
@@ -126,16 +133,16 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
               <TableCell>
                 <div className="text-xs flex items-center gap-1">
                   <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>{new Date(log.nextServiceDate).toLocaleDateString()}</span>
+                  <span>{mounted ? new Date(log.nextServiceDate).toLocaleDateString() : ""}</span>
                 </div>
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">
-                  {log.oilChangeDone && <Badge variant="secondary">Oil Change</Badge>}
-                  {log.tyresChanged && <Badge variant="secondary">Tyres</Badge>}
-                  {log.batteryChanged && <Badge variant="secondary">Battery</Badge>}
+                  {log.oilChangeDone && <Badge variant="secondary">{t("oil_change")}</Badge>}
+                  {log.tyresChanged && <Badge variant="secondary">{t("tyres")}</Badge>}
+                  {log.batteryChanged && <Badge variant="secondary">{t("battery")}</Badge>}
                   {!log.oilChangeDone && !log.tyresChanged && !log.batteryChanged && (
-                    <span className="text-xs text-muted-foreground">General Repair</span>
+                    <span className="text-xs text-muted-foreground">{t("general_repair")}</span>
                   )}
                 </div>
               </TableCell>
@@ -151,7 +158,7 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
                       size="icon"
                       className="h-8 w-8 text-green-500 hover:text-green-600 hover:bg-green-500/10"
                       onClick={() => handleComplete(log.id, log.vehicleId)}
-                      title="Mark Service Complete"
+                      title={t("mark_complete")}
                     >
                       <CheckCircle className="h-4.5 w-4.5" />
                     </Button>
@@ -171,7 +178,7 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
           {logs.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                No maintenance history logs found.
+                {t("no_maintenance")}
               </TableCell>
             </TableRow>
           )}
@@ -179,7 +186,7 @@ export function MaintenanceManagerClient({ logs, vehicles }: MaintenanceManagerP
       </TableContainer>
 
       {/* Log Service Event Dialog */}
-      <Dialog isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title="Log Workshop Service Event">
+      <Dialog isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={t("log_maintenance")}>
         <form onSubmit={handleFormSubmit} className="space-y-4">
           {formError && (
             <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600">
