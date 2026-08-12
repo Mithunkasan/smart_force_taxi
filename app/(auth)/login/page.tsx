@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Truck, Mail, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { Truck, Mail, Lock, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +85,15 @@ export default function LoginPage() {
           })
         }}
       />
-      <Card className="w-full max-w-md border-border glass glow-primary">
+      <Card className="w-full max-w-md border-border glass glow-primary relative">
+        <button
+          onClick={() => router.push("/")}
+          className="absolute top-4 left-4 p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          title="Back to Home"
+          type="button"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <CardHeader className="space-y-2 text-center">
           <div className="mx-auto flex h-12 w-auto items-center justify-center mb-2">
             <img 

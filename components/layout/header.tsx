@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useTheme } from "./theme-provider";
 import { useTranslation } from "@/components/layout/language-provider";
-import { Bell, Moon, Sun, User as UserIcon, Check } from "lucide-react";
+import { Bell, Moon, Sun, User as UserIcon, Check, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/utils/cn";
+import { signOut } from "next-auth/react";
 
 interface NotificationItem {
   id: string;
@@ -29,13 +30,18 @@ export function Header({ user }: HeaderProps) {
   const { language, setLanguage, t } = useTranslation();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowNotifDropdown(false);
+      }
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setShowProfileDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -198,10 +204,26 @@ export function Header({ user }: HeaderProps) {
         </div>
 
         {/* User Icon indicator */}
-        <div className="flex items-center gap-2 border-l border-border pl-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="flex items-center gap-2 border-l border-border pl-4 relative" ref={profileDropdownRef}>
+          <button 
+            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary cursor-pointer hover:bg-primary/20 transition-colors focus:outline-none"
+            aria-label="User Profile menu"
+          >
             <UserIcon className="h-5 w-5" />
-          </div>
+          </button>
+          
+          {showProfileDropdown && (
+            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border bg-card p-2 shadow-xl z-50 text-card-foreground">
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
