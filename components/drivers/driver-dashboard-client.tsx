@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from "react";
+import React, { useState, useEffect, useTransition, useCallback } from "react";
 import { User, Vehicle, Trip, DriverShift } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { bookCarAction } from "@/actions/driver-trips";
-import { Clock, Calendar, AlertCircle, Truck, CheckCircle2 } from "lucide-react";
+import { Clock, Calendar, CalendarDays, AlertCircle, Truck, CheckCircle2 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
 import { useRouter } from "next/navigation";
@@ -37,9 +37,16 @@ export function DriverDashboardClient({
   const router = useRouter();
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [vehicleFilter, setVehicleFilter] = useState<"ALL" | "AVAILABLE" | "ON_TRIP">("ALL");
-  const [datesList, setDatesList] = useState<Date[]>([]);
+  // Dates: 7-day default window; showAllDates toggles full calendar mode
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  
+  const [showAllDates, setShowAllDates] = useState(false);
+  // Displayed dates: ±3 around selected if selected ≠ today, else 7-day window
+  const [windowDates, setWindowDates] = useState<Date[]>([]);
+
+  // Live bookings state for real-time slot availability
+  const [liveBookings, setLiveBookings] = useState<(Trip & { driver?: User | null; vehicle?: Vehicle | null })[]>(bookings);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+
   const [bookingTimes, setBookingTimes] = useState({
     startTime: "",
     endTime: "",
@@ -55,15 +62,16 @@ export function DriverDashboardClient({
   useEffect(() => {
     setMounted(true);
 
-    // Generate dates list (5 days)
-    const list = [];
+    // Generate dates list (7 days)
+    const list: Date[] = [];
     const today = new Date();
-    for (let i = 0; i < 5; i++) {
-      const d = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
       d.setDate(today.getDate() + i);
       list.push(d);
     }
-    setDatesList(list);
+    setWindowDates(list);
 
     // Sunday Popup check
     if (new Date().getDay() === 0) {
@@ -73,6 +81,61 @@ export function DriverDashboardClient({
       }
     }
   }, []);
+
+  // When selectedDate changes (and showAllDates is off), update window to ±3 days
+  useEffect(() => {
+    if (showAllDates) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sel = new Date(selectedDate);
+    sel.setHours(0, 0, 0, 0);
+    const isToday = sel.getTime() === today.getTime();
+
+    if (isToday) {
+      // Show 7-day window from today
+      const list: Date[] = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        list.push(d);
+      }
+      setWindowDates(list);
+    } else {
+      // Show ±3 days around selected date
+      const window: Date[] = [];
+      for (let i = -3; i <= 3; i++) {
+        const d = new Date(sel);
+        d.setDate(sel.getDate() + i);
+        window.push(d);
+      }
+      setWindowDates(window);
+    }
+  }, [selectedDate, showAllDates]);
+
+  // Helper: fetch live bookings for active vehicle
+  const fetchLiveBookings = useCallback(async (vehicleId: string) => {
+    try {
+      const res = await fetch(`/api/bookings?vehicleId=${vehicleId}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.bookings) {
+        setLiveBookings(data.bookings);
+        setLastRefreshed(new Date());
+      }
+    } catch {
+      // silently ignore network errors
+    }
+  }, []);
+
+  // Poll for live bookings every 20 seconds when a vehicle is selected
+  useEffect(() => {
+    const activeVehicleId = selectedVehicle?.id || vehicles[0]?.id;
+    if (!activeVehicleId) return;
+    // Initial fetch
+    fetchLiveBookings(activeVehicleId);
+    const interval = setInterval(() => fetchLiveBookings(activeVehicleId), 20000);
+    return () => clearInterval(interval);
+  }, [selectedVehicle, vehicles, fetchLiveBookings]);
 
 
 
@@ -110,13 +173,17 @@ export function DriverDashboardClient({
     ? activeVehicle 
     : filteredVehicles[0] || vehicles[0] || null;
 
-  // Active Vehicle Bookings for the selected date
-  const activeVehicleBookings = bookings.filter((b) => {
+  // Active Vehicle Bookings for the selected date — uses live bookings for real-time accuracy
+  const activeVehicleBookings = liveBookings.filter((b) => {
     if (!activeVehicleForDisplay || b.vehicleId !== activeVehicleForDisplay.id || b.status === "CANCELLED" || b.status === "COMPLETED") return false;
+    // Include any booking that overlaps with the selected date at all
+    const dayStart = new Date(selectedDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(selectedDate);
+    dayEnd.setHours(23, 59, 59, 999);
     const bStart = new Date(b.startTime);
-    return bStart.getFullYear() === selectedDate.getFullYear() &&
-           bStart.getMonth() === selectedDate.getMonth() &&
-           bStart.getDate() === selectedDate.getDate();
+    const bEnd = new Date(b.endTime);
+    return bStart < dayEnd && bEnd > dayStart;
   });
 
 
@@ -139,16 +206,18 @@ export function DriverDashboardClient({
   };
 
   const slotsList = React.useMemo(() => {
+    const now = new Date();
+    const twelveHoursFromNow = new Date(now.getTime() + 12 * 60 * 60 * 1000);
     const slots = [];
     for (let hour = 0; hour < 24; hour++) {
-      for (let minute of [0, 30]) {
+      for (const minute of [0, 30]) {
         const ampm = hour >= 12 ? "PM" : "AM";
         const displayHour = hour % 12 === 0 ? 12 : hour % 12;
         const displayMinute = minute === 0 ? "00" : "30";
-        
+
         const pad = (num: number) => String(num).padStart(2, '0');
         const startStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(hour)}:${pad(minute)}`;
-        
+
         let endHour = hour;
         let endMinute = minute + 30;
         if (endMinute === 60) {
@@ -156,7 +225,16 @@ export function DriverDashboardClient({
           endMinute = 0;
         }
         const endStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(endHour)}:${pad(endMinute)}`;
-        
+
+        const slotStartTime = new Date(startStr);
+        const slotEndTime = new Date(endStr);
+
+        // Skip past slots (slot must not have already ended)
+        if (slotEndTime <= now) continue;
+
+        // Only show slots starting within the next 12 hours
+        if (slotStartTime > twelveHoursFromNow) continue;
+
         slots.push({
           label: `${displayHour}:${displayMinute} ${ampm}`,
           labelFormatted: (
@@ -353,14 +431,61 @@ export function DriverDashboardClient({
         <CardContent className="space-y-6 pt-6">
           {/* Date Selector Row */}
           <div className="space-y-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block">Select Date</span>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none items-center">
-              {datesList.map((date, idx) => {
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Date</span>
+              <div className="flex items-center gap-2">
+                {/* Live refresh indicator */}
+                {mounted && (
+                  <span className="text-[9px] text-muted-foreground">
+                    Updated {lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+                {/* Calendar icon — toggles between 7-day strip and full date picker */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    title={showAllDates ? "Back to date strip" : "Browse all dates"}
+                    onClick={() => setShowAllDates((v) => !v)}
+                    className={cn(
+                      "flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-semibold transition-all cursor-pointer",
+                      showAllDates
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/30"
+                    )}
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {showAllDates ? "Close" : "All Dates"}
+                  </button>
+                  {showAllDates && (
+                    <input
+                      type="date"
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      value={mounted ? selectedDate.toISOString().split('T')[0] : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          // parse as local date
+                          const [y, m, d] = e.target.value.split('-').map(Number);
+                          const picked = new Date(y, m - 1, d);
+                          setSelectedDate(picked);
+                          setClickedBookedSlot(null);
+                          setShowAllDates(false);
+                        }
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none items-center">
+              {windowDates.map((date, idx) => {
                 const isSelected = date.toDateString() === selectedDate.toDateString();
+                const today = new Date();
+                const isToday = date.toDateString() === today.toDateString();
+                const isPast = date < today && !isToday;
                 const monthStr = date.toLocaleString('default', { month: 'short' });
                 const dayNum = date.getDate();
                 const dayName = date.toLocaleString('default', { weekday: 'short' }).toUpperCase();
-                
+
                 return (
                   <button
                     key={idx}
@@ -370,35 +495,22 @@ export function DriverDashboardClient({
                       setClickedBookedSlot(null);
                     }}
                     className={cn(
-                      "flex flex-col items-center justify-between p-3 min-w-[75px] h-[90px] rounded-xl border transition-all cursor-pointer",
-                      isSelected 
-                        ? "border-primary bg-primary/10 text-primary font-bold shadow-md glow-primary" 
+                      "flex flex-col items-center justify-between p-2.5 min-w-[66px] h-[80px] rounded-xl border transition-all cursor-pointer shrink-0",
+                      isSelected
+                        ? "border-primary bg-primary/10 text-primary font-bold shadow-md glow-primary"
+                        : isPast
+                        ? "border-border/30 bg-muted/5 text-muted-foreground/40 cursor-not-allowed"
                         : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/30"
                     )}
                   >
-                    <span className="text-[10px] uppercase font-bold tracking-wider">{monthStr}</span>
-                    <span className="text-xl font-extrabold">{dayNum}</span>
-                    <span className="text-[9px] font-semibold">{dayName}</span>
+                    <span className="text-[9px] uppercase font-bold tracking-wider">{monthStr}</span>
+                    <span className="text-lg font-extrabold">{dayNum}</span>
+                    <span className={cn("text-[9px] font-semibold", isToday && !isSelected && "text-primary")}>
+                      {isToday ? "TODAY" : dayName}
+                    </span>
                   </button>
                 );
               })}
-              
-              {/* Custom Date Picker Card */}
-              <div className="relative flex flex-col items-center justify-center p-3 min-w-[75px] h-[90px] border border-border rounded-xl cursor-pointer hover:border-primary/40 bg-card group transition-all">
-                <Calendar className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                <span className="text-[9px] font-semibold text-muted-foreground mt-1">Pick Date</span>
-                <input 
-                  type="date" 
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  value={mounted ? selectedDate.toISOString().split('T')[0] : ""}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setSelectedDate(new Date(e.target.value));
-                      setClickedBookedSlot(null);
-                    }
-                  }}
-                />
-              </div>
             </div>
           </div>
 
@@ -436,65 +548,6 @@ export function DriverDashboardClient({
 
           {activeVehicleForDisplay && (
             <>
-              {/* Slide to check availability Timeline */}
-              <div className="space-y-3 border-t border-border/30 pt-4">
-                <div className="text-center pb-1">
-                  <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider block">Slide to check availability</span>
-                </div>
-                
-                <div className="w-full overflow-x-auto scrollbar-none border border-border/40 rounded-xl bg-muted/5 p-4 shadow-inner">
-                  <div className="relative h-20 w-[1440px] mx-auto select-none">
-                    {/* Hour markers & ticks */}
-                    {Array.from({ length: 25 }).map((_, i) => {
-                      const hour = i % 24;
-                      const ampm = i < 12 || i === 24 ? "AM" : "PM";
-                      const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-                      const label = `${displayHour} ${ampm}`;
-                      const leftPos = i * 60; // 0px to 1440px
-                      
-                      return (
-                        <div 
-                          key={i} 
-                          className="absolute top-0 flex flex-col items-center justify-between h-[52px]" 
-                          style={{ left: `${leftPos}px`, transform: 'translateX(-50%)', width: '60px' }}
-                        >
-                          <span className="text-[10px] text-muted-foreground font-bold">{label}</span>
-                          <div className="w-[1.5px] h-4 bg-muted-foreground/30" />
-                        </div>
-                      );
-                    })}
-                    
-                    {/* Timeline horizontal track line */}
-                    <div className="absolute bottom-[8px] left-0 right-0 h-[8px] bg-muted/40 rounded-full" />
-                    
-                    {/* Booked ranges overlays */}
-                    {mounted && activeVehicleBookings.map((b) => {
-                      const dayStart = new Date(selectedDate);
-                      dayStart.setHours(0, 0, 0, 0);
-                      const dayEnd = new Date(selectedDate);
-                      dayEnd.setHours(23, 59, 59, 999);
-
-                      const start = new Date(Math.max(new Date(b.startTime).getTime(), dayStart.getTime()));
-                      const end = new Date(Math.min(new Date(b.endTime).getTime(), dayEnd.getTime()));
-                      
-                      const startMins = start.getHours() * 60 + start.getMinutes();
-                      const endMins = end.getHours() * 60 + end.getMinutes();
-                      const durationMins = Math.max(endMins - startMins, 0);
-                      
-                      if (durationMins <= 0) return null;
-                      
-                      return (
-                        <div 
-                          key={b.id}
-                          className="absolute bottom-[8px] h-[8px] bg-red-600 hover:bg-red-500 transition-colors cursor-help rounded-full border border-red-700/20"
-                          style={{ left: `${startMins}px`, width: `${durationMins}px` }}
-                          title={`Booked: ${b.requestedBy || 'Driver'} (${start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
 
               {/* From & To time fields */}
               <div className="grid grid-cols-2 gap-4 border-t border-border/30 pt-4">
@@ -543,10 +596,15 @@ export function DriverDashboardClient({
                 </div>
               )}
 
-              {/* Time Slots Grid */}
-              <div className="space-y-3 border-t border-border/30 pt-4">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block">Select Time Slot</span>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 max-h-80 overflow-y-auto pr-1">
+              {/* Time Slots Grid — shows only future slots */}
+              <div className="space-y-2 border-t border-border/30 pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Time Slot</span>
+                  <span className="text-[10px] text-muted-foreground italic">
+                    {slotsList.length} slot{slotsList.length !== 1 ? 's' : ''} available
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 max-h-64 overflow-y-auto pr-1">
                   {slotsList.map((slot, index) => {
                     const booking = isSlotBooked(slot);
                     const isBooked = !!booking;
@@ -558,6 +616,7 @@ export function DriverDashboardClient({
                       <button
                         key={index}
                         type="button"
+                        title={isBooked ? `Booked by ${(booking as any)?.driver?.name || (booking as any)?.requestedBy || 'Driver'}` : undefined}
                         onClick={() => {
                           if (isBooked) {
                             setClickedBookedSlot(booking);
@@ -566,15 +625,16 @@ export function DriverDashboardClient({
                           }
                         }}
                         className={cn(
-                          "p-2.5 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all h-[68px]",
-                          isBooked 
-                            ? "bg-red-600/80 border-red-700/30 text-white hover:bg-red-600" 
+                          "p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all h-[60px]",
+                          isBooked
+                            ? "bg-red-600/80 border-red-700/30 text-white hover:bg-red-600 cursor-help"
                             : isSelected
                               ? "border-primary bg-primary/10 text-primary font-bold shadow-md glow-primary"
                               : "border-border bg-muted/10 hover:bg-muted/30 text-foreground"
                         )}
                       >
                         {slot.labelFormatted}
+                        {isBooked && <span className="text-[8px] mt-0.5 opacity-80">Booked</span>}
                       </button>
                     );
                   })}
