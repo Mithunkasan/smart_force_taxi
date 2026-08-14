@@ -339,7 +339,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Full Name</label>
               <Input
@@ -361,7 +361,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Employee ID</label>
               <Input
@@ -395,7 +395,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">License Number</label>
               <Input
@@ -416,7 +416,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Joining Date</label>
               <Input
@@ -473,7 +473,7 @@ export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerP
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex items-center gap-3">
                 <Award className="h-5 w-5 text-primary shrink-0" />
                 <div>

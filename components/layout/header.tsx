@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useTheme } from "./theme-provider";
 import { useTranslation } from "@/components/layout/language-provider";
-import { Bell, Moon, Sun, User as UserIcon, Check, LogOut } from "lucide-react";
+import { Bell, Moon, Sun, User as UserIcon, Check, LogOut, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/utils/cn";
@@ -92,15 +92,32 @@ export function Header({ user }: HeaderProps) {
     }
   };
 
+  const handleToggleSidebar = () => {
+    window.dispatchEvent(new Event("toggle-sidebar"));
+  };
+
   return (
     <header className="flex h-16 w-full items-center justify-between border-b border-border bg-card px-4 sm:px-6">
       {/* Welcome Message / Breadcrumb */}
-      <div className="truncate pr-2">
-        <h1 className="text-xs sm:text-sm font-semibold text-muted-foreground truncate">
-          <span className="hidden xs:inline">{t("welcome_back")}, </span>
-          <span className="font-bold text-foreground">{user.name}</span>
-        </h1>
-        <p className="text-[10px] sm:text-xs text-muted-foreground capitalize">{user.role.toLowerCase().replace("_", " ")}</p>
+      <div className="flex items-center gap-2.5 truncate pr-2">
+        {user.role !== "DRIVER" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden shrink-0 h-9 w-9 rounded-lg hover:bg-muted"
+            onClick={handleToggleSidebar}
+            aria-label="Toggle Sidebar"
+          >
+            <Menu className="h-5 w-5 text-foreground" />
+          </Button>
+        )}
+        <div className="truncate">
+          <h1 className="text-xs sm:text-sm font-semibold text-muted-foreground truncate">
+            <span className="hidden xs:inline">{t("welcome_back")}, </span>
+            <span className="font-bold text-foreground">{user.name}</span>
+          </h1>
+          <p className="text-[10px] sm:text-xs text-muted-foreground capitalize">{user.role.toLowerCase().replace("_", " ")}</p>
+        </div>
       </div>
 
       {/* User Actions */}

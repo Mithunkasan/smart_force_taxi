@@ -36,6 +36,12 @@ export function Sidebar({ role }: SidebarProps) {
   const { theme } = useTheme();
   const { t } = useTranslation();
 
+  React.useEffect(() => {
+    const handleToggle = () => setMobileOpen((prev) => !prev);
+    window.addEventListener("toggle-sidebar", handleToggle);
+    return () => window.removeEventListener("toggle-sidebar", handleToggle);
+  }, []);
+
   const logoSrc = theme === "dark" ? "/logo.png" : "/logo1.png";
 
   const adminLinks = [
@@ -61,17 +67,6 @@ export function Sidebar({ role }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile Toggle Bar */}
-      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3 md:hidden">
-        <div className="flex items-center gap-2">
-          <img src={logoSrc} alt="Smart Force Taxi Logo" className="h-6 w-auto object-contain" />
-          <span className="font-bold text-foreground">Smart Force Taxi</span>
-        </div>
-        <Button variant="ghost" size="icon" onClick={() => setMobileOpen(!mobileOpen)}>
-          <Menu className="h-6 w-6" />
-        </Button>
-      </div>
-
       {/* Sidebar Container */}
       <aside
         className={cn(

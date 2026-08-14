@@ -333,7 +333,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Plate Number (Vehicle Number)</label>
               <Input
@@ -354,7 +354,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Brand</label>
               <Input
@@ -384,7 +384,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Car Type (e.g. Sedan, SUV)</label>
               <Input
@@ -416,7 +416,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Seating Capacity</label>
               <Input
@@ -437,7 +437,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Insurance Expiry</label>
               <Input
@@ -458,7 +458,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Pollution Cert Expiry</label>
               <Input
@@ -479,7 +479,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Vehicle Status</label>
               <select
@@ -544,7 +544,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
               {getStatusLabel(selectedVehicle.status)}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex items-center gap-3">
                 <Milestone className="h-5 w-5 text-primary shrink-0" />
                 <div>
@@ -561,7 +561,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border pt-4 text-xs">
               <div>
                 <span className="text-muted-foreground block">Car Type:</span>
                 <span className="font-semibold text-foreground">{selectedVehicle.carType || "N/A"}</span>
@@ -583,7 +583,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
               <h4 className="text-xs font-bold text-foreground mb-3 uppercase tracking-wider flex items-center gap-1.5">
                 <Calendar className="h-4.5 w-4.5 text-primary" /> Certificate Expiry Dates
               </h4>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs bg-muted/40 p-4 rounded-xl border border-border/40">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs bg-muted/40 p-4 rounded-xl border border-border/40">
                 <div>
                   <span className="block text-muted-foreground">Insurance:</span>
                   <span className="font-medium text-foreground">{new Date(selectedVehicle.insuranceExpiry).toLocaleDateString("en-US", { dateStyle: "long" })}</span>
