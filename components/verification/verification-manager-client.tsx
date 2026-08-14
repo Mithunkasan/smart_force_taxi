@@ -168,7 +168,7 @@ export function VerificationManagerClient({ trips }: VerificationManagerProps) {
             </div>
 
             {/* Audit grid */}
-            <div className="grid grid-cols-2 gap-6 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
               {/* Company Records */}
               <div className="space-y-4 bg-muted/20 p-4 rounded-xl border border-border/40">
                 <span className="block text-[10px] uppercase font-bold text-muted-foreground tracking-wider border-b border-border pb-1.5 mb-2">Company Registry Logs</span>
@@ -254,7 +254,7 @@ export function VerificationManagerClient({ trips }: VerificationManagerProps) {
             </div>
 
             {/* Vehicle Condition and Parking Info */}
-            <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               {selectedTrip.conditionReport && (
                 <div className="space-y-1.5 p-3 rounded-lg border border-border/40 bg-muted/10">
                   <span className="font-semibold block text-[10px] uppercase text-muted-foreground">Vehicle Condition Report</span>

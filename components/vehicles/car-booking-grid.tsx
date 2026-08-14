@@ -971,7 +971,7 @@ export function CarBookingGrid({
           <FileText className="h-4.5 w-4.5 text-primary" />
           Vehicle Booking History & Log
         </h4>
-        <div className="max-h-60 overflow-y-auto border border-border/40 rounded-lg">
+        <div className="max-h-60 overflow-auto border border-border/40 rounded-lg">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-muted/40 border-b border-border/40 text-[10px] uppercase font-bold text-muted-foreground">

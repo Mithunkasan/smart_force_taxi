@@ -180,7 +180,7 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Select Vehicle</label>
               <select
@@ -213,7 +213,7 @@ export function FuelManagerClient({ logs, vehicles, drivers }: FuelManagerProps)
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Quantity (Liters)</label>
               <Input

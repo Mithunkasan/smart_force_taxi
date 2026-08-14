@@ -36,7 +36,7 @@ export function DashboardCharts({ financialData, vehicleStatusData }: DashboardC
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {/* Financial Overview Chart */}
-      <Card className="col-span-2 border-border glass glow-primary">
+      <Card className="col-span-1 md:col-span-2 border-border glass glow-primary">
         <CardHeader>
           <CardTitle>Financial Overview</CardTitle>
           <CardDescription>Monthly trends for Revenue, Fuel, and Maintenance expenses</CardDescription>
