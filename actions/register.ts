@@ -7,11 +7,11 @@ import { sendDriverRegistrationEmail, sendDriverRegistrationWhatsApp } from "@/l
 export async function registerUser(data: {
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
   licenseNumber: string;
   licenseExpiry: string;
   experience: number;
-  shift: string;
+  shift?: string;
   emergencyContact: string;
   password?: string;
 }) {

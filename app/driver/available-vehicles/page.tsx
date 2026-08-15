@@ -13,59 +13,35 @@ export default async function AvailableVehiclesPage() {
     redirect("/login");
   }
 
-  // Fetch only AVAILABLE vehicles and include their latest completed trip's parking location
+  // Fetch only AVAILABLE vehicles
   const vehicles = await db.vehicle.findMany({
     where: {
       status: "AVAILABLE",
-    },
-    include: {
-      trips: {
-        where: {
-          status: "COMPLETED",
-          parking: {
-            isNot: null,
-          },
-        },
-        orderBy: {
-          endTime: "desc",
-        },
-        take: 1,
-        include: {
-          parking: true,
-        },
-      },
     },
     orderBy: {
       name: "asc",
     },
   });
 
-  // Transform to extract the latest parking location directly
-  const availableVehicles = vehicles.map((vehicle) => {
-    const latestTrip = vehicle.trips[0] || null;
-    const latestParking = latestTrip?.parking || null;
-
-    return {
-      id: vehicle.id,
-      vehicleNumber: vehicle.vehicleNumber,
-      name: vehicle.name,
-      brand: vehicle.brand,
-      model: vehicle.model,
-      year: vehicle.year,
-      seatingCapacity: vehicle.seatingCapacity,
-      odometer: vehicle.odometer,
-      status: vehicle.status,
-      parkingLocation: latestParking
-        ? {
-            location: latestParking.location,
-            address: latestParking.address,
-            landmark: latestParking.landmark,
-            googleMapsLink: latestParking.googleMapsLink,
-            parkingTime: latestParking.parkingTime,
-          }
-        : null,
-    };
+  const bookings = await db.trip.findMany({
+    where: {
+      status: {
+        notIn: ["CANCELLED", "COMPLETED"],
+      },
+    },
+    include: {
+      driver: true,
+      vehicle: true,
+    },
   });
 
-  return <AvailableVehiclesClient vehicles={availableVehicles} />;
+  return (
+    <AvailableVehiclesClient
+      vehicles={vehicles}
+      bookings={bookings}
+      currentUserId={session.user.id}
+      currentUserRole={session.user.role}
+      currentUserName={session.user.name || ""}
+    />
+  );
 }

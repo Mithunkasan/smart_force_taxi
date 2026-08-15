@@ -8,17 +8,11 @@ import {
   LayoutDashboard,
   Truck,
   Users,
-  Route,
-  FileCheck,
-  Wrench,
-  Fuel,
   CalendarCheck,
-  FileSpreadsheet,
   LogOut,
   ChevronLeft,
   ChevronRight,
   Menu,
-  Clock,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
@@ -45,17 +39,15 @@ export function Sidebar({ role }: SidebarProps) {
   const logoSrc = theme === "dark" ? "/logo.png" : "/logo1.png";
 
   const adminLinks = [
+    { href: "/admin", label: t("dashboard"), icon: LayoutDashboard },
     { href: "/admin/vehicles", label: t("vehicles"), icon: Truck },
     { href: "/admin/drivers", label: t("drivers"), icon: Users },
-    { href: "/admin/trips", label: t("booking_history"), icon: FileSpreadsheet },
     { href: "/admin/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
   ];
 
   const driverLinks = [
     { href: "/driver", label: t("dashboard"), icon: LayoutDashboard },
-    { href: "/driver/trip", label: t("trips"), icon: Route },
     { href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
-    { href: "/driver/issues", label: t("report_issue"), icon: Wrench },
     { href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
   ];
 

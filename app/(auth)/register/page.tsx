@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { User, Mail, Lock, Phone, CreditCard, Calendar, Briefcase, Clock, ShieldAlert, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
+import { User, Mail, Lock, CreditCard, Calendar, Briefcase, ShieldAlert, AlertCircle, Loader2 } from "lucide-react";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,12 +18,14 @@ const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  phone: z.string().min(10, "Phone number must be at least 10 digits"),
+  confirmPassword: z.string().min(6, "Confirm password must be at least 6 characters"),
   licenseNumber: z.string().min(5, "License number is required"),
   licenseExpiry: z.string().min(1, "License expiry date is required"),
   experience: z.number().min(0, "Experience must be a positive number"),
-  shift: z.string().min(1, "Shift selection is required"),
   emergencyContact: z.string().min(10, "Emergency contact must be at least 10 digits"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -48,11 +50,10 @@ export default function RegisterPage() {
       name: "",
       email: "",
       password: "",
-      phone: "",
+      confirmPassword: "",
       licenseNumber: "",
       licenseExpiry: "",
       experience: 0,
-      shift: "Morning",
       emergencyContact: "",
     },
   });
@@ -62,7 +63,15 @@ export default function RegisterPage() {
     setError(null);
 
     try {
-      const result = await registerUser(data);
+      const result = await registerUser({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        licenseNumber: data.licenseNumber,
+        licenseExpiry: data.licenseExpiry,
+        experience: data.experience,
+        emergencyContact: data.emergencyContact,
+      });
 
       if (result.error) {
         setError(result.error);
@@ -175,24 +184,24 @@ export default function RegisterPage() {
                   )}
                 </div>
 
-                {/* Phone */}
+                {/* Confirm Password */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground" htmlFor="phone">
-                    Phone Number
+                  <label className="text-xs font-semibold text-muted-foreground" htmlFor="confirmPassword">
+                    Confirm Password
                   </label>
                   <div className="relative">
-                    <Phone className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
                     <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="+1 (555) 019-2834"
+                      id="confirmPassword"
+                      type="password"
+                      placeholder="••••••••"
                       className="pl-10 focus-visible:ring-amber-500"
                       disabled={isLoading}
-                      {...register("phone")}
+                      {...register("confirmPassword")}
                     />
                   </div>
-                  {errors.phone && (
-                    <p className="text-xs text-red-500 font-medium">{errors.phone.message}</p>
+                  {errors.confirmPassword && (
+                    <p className="text-xs text-red-500 font-medium">{errors.confirmPassword.message}</p>
                   )}
                 </div>
 
@@ -258,31 +267,8 @@ export default function RegisterPage() {
                   )}
                 </div>
 
-                {/* Shift Preference */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground" htmlFor="shift">
-                    Preferred Shift
-                  </label>
-                  <div className="relative">
-                    <Clock className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
-                    <select
-                      id="shift"
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-10"
-                      disabled={isLoading}
-                      {...register("shift")}
-                    >
-                      <option value="Morning">Morning (6 AM - 2 PM)</option>
-                      <option value="Evening">Evening (2 PM - 10 PM)</option>
-                      <option value="Night">Night (10 PM - 6 AM)</option>
-                    </select>
-                  </div>
-                  {errors.shift && (
-                    <p className="text-xs text-red-500 font-medium">{errors.shift.message}</p>
-                  )}
-                </div>
-
                 {/* Emergency Contact */}
-                <div className="space-y-1.5 md:col-span-2">
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground" htmlFor="emergencyContact">
                     Emergency Contact Number
                   </label>

@@ -7,17 +7,8 @@ async function main() {
   console.log('Seeding database...');
 
   // Clean existing data in order of dependency
-  await prisma.notification.deleteMany({});
-  await prisma.attendance.deleteMany({});
-  await prisma.fuelLog.deleteMany({});
-  await prisma.maintenance.deleteMany({});
-  await prisma.adminVerification.deleteMany({});
-  await prisma.vehicleConditionReport.deleteMany({});
-  await prisma.parkingLocation.deleteMany({});
-  await prisma.tripClosing.deleteMany({});
+  await prisma.weeklyLog.deleteMany({});
   await prisma.trip.deleteMany({});
-  await prisma.carAssignment.deleteMany({});
-  await prisma.driverShift.deleteMany({});
   await prisma.vehicle.deleteMany({});
   await prisma.user.deleteMany({});
 

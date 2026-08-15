@@ -18,23 +18,8 @@ export default async function DriverDashboard() {
   });
 
   if (!driver) {
-    redirect("/login");
+    redirect("/login?error=SessionExpired");
   }
-
-  // Find active driver shift
-  const activeShift = await db.driverShift.findFirst({
-    where: {
-      driverId: driver.id,
-      actualEnd: null,
-    },
-  });
-
-  // Find currently assigned vehicle to driver
-  const assignedVehicle = await db.vehicle.findFirst({
-    where: {
-      currentDriverId: driver.id,
-    },
-  });
 
   // Find all vehicles
   const vehicles = await db.vehicle.findMany({
@@ -69,10 +54,17 @@ export default async function DriverDashboard() {
     },
   });
 
+  // Find vehicle permanently assigned to this driver
+  const assignedVehicle = await db.vehicle.findFirst({
+    where: {
+      assignedDriverId: driver.id,
+    },
+  });
+
   return (
     <DriverDashboardClient
       driver={driver}
-      activeShift={activeShift}
+      activeShift={null}
       assignedVehicle={assignedVehicle}
       vehicles={vehicles}
       bookings={bookings}

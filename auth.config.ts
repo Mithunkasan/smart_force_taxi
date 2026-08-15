@@ -24,4 +24,5 @@ export const authConfig = {
     },
   },
   providers: [], // Providers list is filled inside the Node.js auth environment
+  debug: true,
 } satisfies NextAuthConfig;
