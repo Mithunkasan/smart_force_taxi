@@ -9,6 +9,8 @@ export default auth((req) => {
   const { nextUrl } = req;
   const user = req.auth?.user;
 
+
+
   const isApiRoute = nextUrl.pathname.startsWith("/api");
   const isAuthRoute = nextUrl.pathname === "/login";
   const isLandingRoute = nextUrl.pathname === "/";
@@ -18,12 +20,26 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
+  if (nextUrl.pathname === "/register") {
+    if (!isLoggedIn) {
+      return NextResponse.redirect(new URL("/login", nextUrl));
+    }
+    if (user?.role !== "SUPER_ADMIN" && user?.role !== "TRANSPORT_MANAGER") {
+      return NextResponse.redirect(new URL("/driver", nextUrl));
+    }
+    return NextResponse.next();
+  }
+
   if (isAuthRoute || isLandingRoute) {
-    if (isLoggedIn) {
+    const hasError = nextUrl.searchParams.has("error") || nextUrl.searchParams.has("clear");
+    if (isLoggedIn && !hasError) {
       if (user?.role === "DRIVER") {
         return NextResponse.redirect(new URL("/driver", nextUrl));
-      } else {
+      } else if (user?.role === "SUPER_ADMIN" || user?.role === "TRANSPORT_MANAGER") {
         return NextResponse.redirect(new URL("/admin", nextUrl));
+      } else {
+        // If logged in but has no valid role, let them stay/continue to avoid loops
+        return NextResponse.next();
       }
     }
     // Allow access to login or landing page
@@ -37,13 +53,19 @@ export default auth((req) => {
 
   if (nextUrl.pathname.startsWith("/admin")) {
     if (user?.role !== "SUPER_ADMIN" && user?.role !== "TRANSPORT_MANAGER") {
-      return NextResponse.redirect(new URL("/driver", nextUrl));
+      if (user?.role === "DRIVER") {
+        return NextResponse.redirect(new URL("/driver", nextUrl));
+      }
+      return NextResponse.redirect(new URL("/login", nextUrl));
     }
   }
 
   if (nextUrl.pathname.startsWith("/driver")) {
     if (user?.role !== "DRIVER") {
-      return NextResponse.redirect(new URL("/admin", nextUrl));
+      if (user?.role === "SUPER_ADMIN" || user?.role === "TRANSPORT_MANAGER") {
+        return NextResponse.redirect(new URL("/admin", nextUrl));
+      }
+      return NextResponse.redirect(new URL("/login", nextUrl));
     }
   }
 

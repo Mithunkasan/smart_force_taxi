@@ -52,7 +52,7 @@ export default function LoginPage() {
         password: data.password,
       });
 
-      if (result?.error) {
+      if (result?.error && !result?.ok) {
         setError("Invalid email or password");
         setIsLoading(false);
       } else {
@@ -60,6 +60,7 @@ export default function LoginPage() {
         router.push("/");
       }
     } catch (err) {
+      console.error("Login unexpected error:", err);
       setError("An unexpected error occurred. Please try again.");
       setIsLoading(false);
     }

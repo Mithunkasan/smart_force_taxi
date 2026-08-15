@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useTransition } from "react";
 import { Vehicle, User, Trip } from "@prisma/client";
@@ -183,7 +183,7 @@ export function CarBookingGrid({
     : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const monthNames = language === "fi"
-    ? ["Tammikuu", "Helmikuu", "Maaliskuu", "Huhtikuu", "Toukokuu", "Kesäkuu", "Heinäkuu", "Elokuu", "Syyskuu", "Lokakuu", "Marraskuu", "Joulukuu"]
+    ? ["Tammikuu", "Helmikuu", "Maaliskuu", "Huhtikuu", "Toukokuu", "Kes├ñkuu", "Hein├ñkuu", "Elokuu", "Syyskuu", "Lokakuu", "Marraskuu", "Joulukuu"]
     : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   // Form states
@@ -329,7 +329,7 @@ export function CarBookingGrid({
         <div>
           <span className="block text-[10px] uppercase font-bold text-muted-foreground tracking-widest">{t("selected_vehicle")}</span>
           <h4 className="text-lg font-bold text-foreground">{vehicle.name}</h4>
-          <span className="font-mono text-xs font-bold text-primary block mt-0.5">{vehicle.vehicleNumber} · {vehicle.carType || "Sedan"}</span>
+          <span className="font-mono text-xs font-bold text-primary block mt-0.5">{vehicle.vehicleNumber} ┬╖ {vehicle.carType || "Sedan"}</span>
         </div>
         <div className="text-right text-xs">
           <span className="text-muted-foreground">{t("odometer")}: </span>
@@ -988,10 +988,10 @@ export function CarBookingGrid({
                   <td className="p-3 font-mono font-bold">{b.tripNumber}</td>
                   <td className="p-3">
                     <div className="font-semibold">{b.driver?.name || "Unassigned"}</div>
-                    <div className="text-[10px] text-muted-foreground">{b.driver?.employeeId || "—"}</div>
+                    <div className="text-[10px] text-muted-foreground">{b.driver?.employeeId || "ΓÇö"}</div>
                   </td>
                   <td className="p-3">
-                    <div>{b.pickup} ➔ {b.destination}</div>
+                    <div>{b.pickup} Γ₧ö {b.destination}</div>
                     <div className="text-[10px] text-muted-foreground italic">{b.purpose}</div>
                   </td>
                   <td className="p-3">

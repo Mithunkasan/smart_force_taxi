@@ -1,47 +1,39 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search, Truck, MapPin, Compass, ExternalLink, Users, Milestone } from "lucide-react";
+import { Search, Truck, Users, Milestone, Calendar } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-
-interface AvailableVehicle {
-  id: string;
-  vehicleNumber: string;
-  name: string;
-  brand: string;
-  model: string;
-  year: number;
-  seatingCapacity: number;
-  odometer: number;
-  status: string;
-  parkingLocation: {
-    location: string;
-    address: string;
-    landmark: string | null;
-    googleMapsLink: string | null;
-    parkingTime: Date;
-  } | null;
-}
+import { Dialog } from "@/components/ui/dialog";
+import { CarBookingGrid } from "@/components/vehicles/car-booking-grid";
+import { Vehicle, Trip, User } from "@prisma/client";
 
 interface AvailableVehiclesClientProps {
-  vehicles: AvailableVehicle[];
+  vehicles: Vehicle[];
+  bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
+  currentUserId: string;
+  currentUserRole: string;
+  currentUserName: string;
 }
 
-export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientProps) {
+export function AvailableVehiclesClient({
+  vehicles,
+  bookings,
+  currentUserId,
+  currentUserRole,
+  currentUserName,
+}: AvailableVehiclesClientProps) {
   const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedVehicleForBooking, setSelectedVehicleForBooking] = useState<Vehicle | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const filteredVehicles = vehicles.filter((v) => {
-    const searchString = `${v.name} ${v.brand} ${v.model} ${v.vehicleNumber} ${
-      v.parkingLocation?.location || ""
-    } ${v.parkingLocation?.address || ""}`.toLowerCase();
+    const searchString = `${v.name} ${v.brand} ${v.model} ${v.vehicleNumber}`.toLowerCase();
     return searchString.includes(searchTerm.toLowerCase());
   });
 
@@ -51,7 +43,7 @@ export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientPro
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Available Fleet</h2>
         <p className="text-sm text-muted-foreground">
-          View all currently unassigned and free vehicles, along with their exact parking spots.
+          View all currently unassigned and free vehicles and select one to book.
         </p>
       </div>
 
@@ -59,7 +51,7 @@ export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientPro
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
         <Input
-          placeholder="Search available cars by name, number, or location..."
+          placeholder="Search available cars by name or plate number..."
           className="pl-10 bg-card"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -101,65 +93,18 @@ export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientPro
                     <span className="block font-mono text-sm font-semibold text-foreground">{vehicle.vehicleNumber}</span>
                   </div>
                 </div>
-
-                {/* Location details */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                    <MapPin className="h-4 w-4" />
-                    <span>Parking Location</span>
-                  </div>
-                  
-                  {vehicle.parkingLocation ? (
-                    <div className="bg-muted/30 border border-border/40 rounded-lg p-3 text-xs space-y-2">
-                      <div>
-                        <span className="font-semibold text-foreground block">{vehicle.parkingLocation.location}</span>
-                        <span className="text-muted-foreground block mt-0.5">{vehicle.parkingLocation.address}</span>
-                      </div>
-                      
-                      {vehicle.parkingLocation.landmark && (
-                        <div>
-                          <span className="text-[10px] text-muted-foreground font-semibold block uppercase tracking-wide">Landmark</span>
-                          <span className="text-foreground">{vehicle.parkingLocation.landmark}</span>
-                        </div>
-                      )}
-
-                      <div className="text-[10px] text-muted-foreground pt-1 border-t border-border/30">
-                        Parked at: {mounted ? new Date(vehicle.parkingLocation.parkingTime).toLocaleString() : "Loading..."}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground italic bg-muted/20 border border-border/20 rounded-lg p-3 text-center">
-                      No parking location registered. Vehicle is at Base Station/Depot.
-                    </div>
-                  )}
-                </div>
               </CardContent>
             </div>
 
-            {/* Clickable Parking Link Action */}
+            {/* Book Vehicle Action */}
             <div className="p-4 pt-0 border-t border-border/40 mt-4">
-              {vehicle.parkingLocation?.googleMapsLink ? (
-                <a 
-                  href={vehicle.parkingLocation.googleMapsLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-full inline-flex items-center justify-center rounded-lg text-xs font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border border-border bg-transparent shadow-sm hover:bg-primary hover:text-white hover:glow-primary h-9 px-3 gap-1.5 cursor-pointer"
-                >
-                  <Compass className="h-4 w-4" />
-                  Navigate to Vehicle
-                  <ExternalLink className="h-3 w-3 ml-0.5" />
-                </a>
-              ) : (
-                <Button 
-                  disabled 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full text-xs opacity-50 cursor-not-allowed"
-                >
-                  <Compass className="h-4 w-4 mr-1.5" />
-                  Navigation Link Unavailable
-                </Button>
-              )}
+              <button 
+                onClick={() => setSelectedVehicleForBooking(vehicle)}
+                className="w-full inline-flex items-center justify-center rounded-lg text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring bg-amber-500 hover:bg-amber-600 text-zinc-950 hover:glow-primary h-9 px-3 gap-1.5 cursor-pointer font-bold border-none"
+              >
+                <Calendar className="h-4 w-4" />
+                Book This Vehicle
+              </button>
             </div>
           </Card>
         ))}
@@ -172,6 +117,21 @@ export function AvailableVehiclesClient({ vehicles }: AvailableVehiclesClientPro
           </div>
         )}
       </div>
+
+      {/* Car Slot Booking Calendar Dialog */}
+      {selectedVehicleForBooking && (
+        <Dialog isOpen={!!selectedVehicleForBooking} onClose={() => setSelectedVehicleForBooking(null)} title="Car Slot Booking Calendar" className="max-w-4xl">
+          <CarBookingGrid
+            vehicle={selectedVehicleForBooking}
+            bookings={bookings.filter((b) => b.vehicleId === selectedVehicleForBooking.id)}
+            drivers={[]}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            currentUserName={currentUserName}
+            onClose={() => setSelectedVehicleForBooking(null)}
+          />
+        </Dialog>
+      )}
     </div>
   );
 }

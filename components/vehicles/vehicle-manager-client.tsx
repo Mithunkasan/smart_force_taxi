@@ -8,14 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { createVehicle, updateVehicle, deleteVehicle } from "@/actions/vehicles";
-import { Search, Plus, Edit2, Trash2, Eye, Calendar, UserCheck, Milestone } from "lucide-react";
-import { CarBookingGrid } from "./car-booking-grid";
+import { Search, Plus, Edit2, Trash2, Eye, Calendar, Milestone } from "lucide-react";
 import { useTranslation } from "@/components/layout/language-provider";
 
 interface VehicleManagerProps {
-  vehicles: (Vehicle & {
-    currentDriver: User | null;
-  })[];
+  vehicles: Vehicle[];
   drivers: User[];
   bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
 }
@@ -34,10 +31,9 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [selectedVehicleForBooking, setSelectedVehicleForBooking] = useState<Vehicle | null>(null);
   
   // Active items
-  const [selectedVehicle, setSelectedVehicle] = useState<(Vehicle & { currentDriver: User | null }) | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [vehicleToEdit, setVehicleToEdit] = useState<Vehicle | null>(null);
   
   const [isPending, startTransition] = useTransition();
@@ -58,7 +54,6 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
     serviceDueDate: "",
     odometer: 0,
     status: "AVAILABLE" as VehicleStatus,
-    currentDriverId: "",
     carType: "Sedan",
     ownershipType: "Own",
     notes: "",
@@ -80,7 +75,6 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
       serviceDueDate: new Date().toISOString().split("T")[0],
       odometer: 0,
       status: "AVAILABLE",
-      currentDriverId: "",
       carType: "Sedan",
       ownershipType: "Own",
       notes: "",
@@ -105,7 +99,6 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
       serviceDueDate: new Date(vehicle.serviceDueDate).toISOString().split("T")[0],
       odometer: vehicle.odometer,
       status: vehicle.status,
-      currentDriverId: vehicle.currentDriverId || "",
       carType: vehicle.carType || "Sedan",
       ownershipType: vehicle.ownershipType || "Own",
       notes: vehicle.notes || "",
@@ -114,12 +107,12 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
     setIsFormOpen(true);
   };
 
-  const handleOpenDetails = (vehicle: Vehicle & { currentDriver: User | null }) => {
+  const handleOpenDetails = (vehicle: Vehicle) => {
     setSelectedVehicle(vehicle);
     setIsDetailsOpen(true);
   };
 
-  const handleOpenDelete = (vehicle: Vehicle & { currentDriver: User | null }) => {
+  const handleOpenDelete = (vehicle: Vehicle) => {
     setSelectedVehicle(vehicle);
     setIsDeleteOpen(true);
   };
@@ -166,7 +159,6 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
     });
   };
 
-  // Filter vehicles
   const filteredVehicles = vehicles.filter((v) => {
     const matchesSearch =
       v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -255,7 +247,6 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             <TableHead>{t("ownership_type")}</TableHead>
             <TableHead>{t("status")}</TableHead>
             <TableHead>{t("odometer")}</TableHead>
-            <TableHead>{t("current_driver")}</TableHead>
             <TableHead className="text-right">{t("actions")}</TableHead>
           </TableRow>
         </TableHeader>
@@ -286,21 +277,8 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
               <TableCell className="font-mono text-xs">
                 {vehicle.odometer.toLocaleString()} km
               </TableCell>
-              <TableCell>
-                {vehicle.currentDriver ? (
-                  <div className="text-xs">
-                    <span className="font-medium text-foreground">{vehicle.currentDriver.name}</span>
-                    <span className="block text-[10px] text-muted-foreground">{vehicle.currentDriver.employeeId}</span>
-                  </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground">{t("unassigned")}</span>
-                )}
-              </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-1.5">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" title={t("book_slot")} onClick={() => setSelectedVehicleForBooking(vehicle)}>
-                    <Calendar className="h-4 w-4" />
-                  </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDetails(vehicle)}>
                     <Eye className="h-4 w-4" />
                   </Button>
@@ -316,7 +294,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
           ))}
           {filteredVehicles.length === 0 && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                 No vehicles found matching filters.
               </TableCell>
             </TableRow>
@@ -479,36 +457,19 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Vehicle Status</label>
-              <select
-                className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value as VehicleStatus })}
-              >
-                <option value="AVAILABLE">Available</option>
-                <option value="ASSIGNED">Assigned</option>
-                <option value="ON_TRIP">On Trip</option>
-                <option value="MAINTENANCE">Maintenance</option>
-                <option value="OFFLINE">Offline</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Assign Driver</label>
-              <select
-                className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
-                value={formData.currentDriverId}
-                onChange={(e) => setFormData({ ...formData, currentDriverId: e.target.value })}
-              >
-                <option value="">No Driver</option>
-                {drivers.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.employeeId})
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground">Vehicle Status</label>
+            <select
+              className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as VehicleStatus })}
+            >
+              <option value="AVAILABLE">Available</option>
+              <option value="ASSIGNED">Assigned</option>
+              <option value="ON_TRIP">On Trip</option>
+              <option value="MAINTENANCE">Maintenance</option>
+              <option value="OFFLINE">Offline</option>
+            </select>
           </div>
 
           <div className="space-y-1">
@@ -550,13 +511,6 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
                 <div>
                   <span className="block text-[10px] text-muted-foreground uppercase font-bold">Odometer</span>
                   <span className="font-mono text-sm">{selectedVehicle.odometer.toLocaleString()} km</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <UserCheck className="h-5 w-5 text-primary shrink-0" />
-                <div>
-                  <span className="block text-[10px] text-muted-foreground uppercase font-bold">Current Driver</span>
-                  <span className="text-sm">{selectedVehicle.currentDriver?.name || "Unassigned"}</span>
                 </div>
               </div>
             </div>
@@ -618,7 +572,7 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
               Are you sure you want to de-register vehicle <span className="font-bold text-primary">{selectedVehicle.vehicleNumber}</span> ({selectedVehicle.name})?
             </p>
             <p className="text-xs text-red-500 font-semibold bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
-              Warning: This action will permanently remove the vehicle record and all associated maintenance, fuel, and trip histories.
+              Warning: This action will permanently remove the vehicle record and all associated trip histories.
             </p>
             <div className="flex justify-end gap-2 border-t border-border pt-4 mt-6">
               <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
@@ -631,21 +585,6 @@ export function VehicleManagerClient({ vehicles, drivers, bookings }: VehicleMan
           </div>
         )}
       </Dialog>
-
-      {/* Car Slot Booking Calendar Dialog */}
-      {selectedVehicleForBooking && (
-        <Dialog isOpen={!!selectedVehicleForBooking} onClose={() => setSelectedVehicleForBooking(null)} title="Car Slot Booking Calendar" className="max-w-4xl">
-          <CarBookingGrid
-            vehicle={selectedVehicleForBooking}
-            bookings={bookings.filter((b) => b.vehicleId === selectedVehicleForBooking.id)}
-            drivers={drivers}
-            currentUserId=""
-            currentUserRole="ADMIN"
-            currentUserName="Admin"
-            onClose={() => setSelectedVehicleForBooking(null)}
-          />
-        </Dialog>
-      )}
     </div>
   );
 }

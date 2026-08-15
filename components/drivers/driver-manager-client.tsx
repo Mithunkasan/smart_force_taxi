@@ -1,560 +1,799 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from "react";
-import { User, Vehicle, DriverStatus } from "@prisma/client";
+import React, { useState, useTransition, useEffect, useCallback, useMemo } from "react";
+import { User, Vehicle, Trip } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
-import { TableContainer, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { createDriver, updateDriver, deleteDriver } from "@/actions/drivers";
-import { Search, Plus, Edit2, Trash2, Eye, Calendar, ShieldAlert, Award, Clock } from "lucide-react";
+import { bookCarAction } from "@/actions/driver-trips";
+import { assignVehicleToDriver } from "@/actions/vehicles";
+import { Search, Plus, Clock, MapPin, CheckCircle2, ChevronRight, UserCheck } from "lucide-react";
 import { useTranslation } from "@/components/layout/language-provider";
+import { useRouter } from "next/navigation";
+import { cn } from "@/utils/cn";
 
 interface DriverManagerProps {
-  drivers: (User & {
-    assignedVehicles: Vehicle[];
-  })[];
-  activeDriverIds: string[]; // IDs of drivers currently driving on a trip
+  drivers: (User & { assignedVehicle?: Vehicle[] })[];
+  bookings: (Trip & { driver?: User | null; vehicle?: Vehicle | null })[];
+  vehicles: Vehicle[];
+  currentUserName: string;
 }
 
-export function DriverManagerClient({ drivers, activeDriverIds }: DriverManagerProps) {
+export function DriverManagerClient({ drivers, bookings, vehicles, currentUserName }: DriverManagerProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [mounted, setMounted] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState<(User & { assignedVehicle?: Vehicle[] }) | null>((drivers[0] as any) || null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Dialog States
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-
-  // Active items
-  const [selectedDriver, setSelectedDriver] = useState<(User & { assignedVehicles: Vehicle[] }) | null>(null);
-  const [driverToEdit, setDriverToEdit] = useState<User | null>(null);
-
+  // Booking Modal State
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState(false);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    employeeId: "",
-    phone: "",
-    licenseNumber: "",
-    licenseExpiry: "",
-    joiningDate: "",
-    shiftStartTime: "06:00 AM",
-    shiftEndTime: "06:00 PM",
-    shiftDuration: "12 Hours",
-    experience: 0,
-    emergencyContact: "",
-    password: "",
+  // Live active bookings for selected vehicle (to show in the slots calendar)
+  const [liveBookings, setLiveBookings] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [clickedBookedSlot, setClickedBookedSlot] = useState<any>(null);
+
+  const [bookingForm, setBookingForm] = useState({
+    vehicleId: "",
+    startTime: "",
+    endTime: "",
+    pickup: "",
+    destination: "",
+    purpose: "Corporate Duty",
+    notes: "",
   });
 
-  const handleOpenAdd = () => {
-    setDriverToEdit(null);
-    setFormData({
-      name: "",
-      email: "",
-      employeeId: "",
-      phone: "",
-      licenseNumber: "",
-      licenseExpiry: new Date().toISOString().split("T")[0],
-      joiningDate: new Date().toISOString().split("T")[0],
-      shiftStartTime: "06:00 AM",
-      shiftEndTime: "06:00 PM",
-      shiftDuration: "12 Hours",
-      experience: 0,
-      emergencyContact: "",
-      password: "",
+  const filteredDrivers = drivers.filter((d) =>
+    d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    d.employeeId.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const activeDriver = selectedDriver || drivers[0] || null;
+
+  // Filter bookings for selected driver
+  const driverBookings = activeDriver
+    ? bookings.filter((b) => b.driverId === activeDriver.id)
+    : [];
+
+  const now = new Date();
+
+  // Categorize selected driver bookings
+  const upcomingBookings = driverBookings.filter(
+    (b) => new Date(b.endTime) > now && b.status !== "CANCELLED" && b.status !== "COMPLETED"
+  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+  const pastBookings = driverBookings.filter(
+    (b) => new Date(b.endTime) <= now || b.status === "CANCELLED" || b.status === "COMPLETED"
+  ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+  // Date strip window dates
+  const [windowDates, setWindowDates] = useState<Date[]>([]);
+  useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const list: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      list.push(d);
+    }
+    setWindowDates(list);
+  }, [selectedDate]);
+
+  // Helper: fetch live bookings for active vehicle
+  const fetchLiveBookings = useCallback(async (vehicleId: string) => {
+    try {
+      const res = await fetch(`/api/bookings?vehicleId=${vehicleId}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.bookings) {
+        setLiveBookings(data.bookings);
+      }
+    } catch {
+      // silently ignore network errors
+    }
+  }, []);
+
+  // Poll for live bookings when vehicle is selected in form
+  useEffect(() => {
+    if (!bookingForm.vehicleId || !isBookingOpen) return;
+    fetchLiveBookings(bookingForm.vehicleId);
+    const interval = setInterval(() => fetchLiveBookings(bookingForm.vehicleId), 20000);
+    return () => clearInterval(interval);
+  }, [bookingForm.vehicleId, isBookingOpen, fetchLiveBookings]);
+
+  // Time format helper
+  const formatTo12Hour = (dateTimeStr: string) => {
+    if (!dateTimeStr) return "HH:MM";
+    const parts = dateTimeStr.split("T");
+    if (parts.length < 2) return "HH:MM";
+    const timePart = parts[1]; // "HH:MM"
+    const timeParts = timePart.split(":");
+    if (timeParts.length < 2) return "HH:MM";
+    const hours = parseInt(timeParts[0], 10);
+    const minutes = timeParts[1];
+    
+    if (isNaN(hours)) return "HH:MM";
+    
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+    return `${String(displayHour).padStart(2, '0')}:${minutes} ${ampm}`;
+  };
+
+  // Generate 48 half-hour slots for the selectedDate
+  const slotsList = useMemo(() => {
+    const slots = [];
+    const nowTime = new Date();
+    for (let hour = 0; hour < 24; hour++) {
+      for (const minute of [0, 30]) {
+        const ampm = hour >= 12 ? "PM" : "AM";
+        const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+        const displayMinute = minute === 0 ? "00" : "30";
+
+        const pad = (num: number) => String(num).padStart(2, '0');
+        const startStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(hour)}:${pad(minute)}`;
+
+        let endHour = hour;
+        let endMinute = minute + 30;
+        if (endMinute === 60) {
+          endHour = (hour + 1) % 24;
+          endMinute = 0;
+        }
+        const endStr = `${selectedDate.getFullYear()}-${pad(selectedDate.getMonth() + 1)}-${pad(selectedDate.getDate())}T${pad(endHour)}:${pad(endMinute)}`;
+
+        const slotStartTime = new Date(startStr);
+        const slotEndTime = new Date(endStr);
+
+        // Skip past slots
+        if (slotEndTime <= nowTime) continue;
+
+        slots.push({
+          label: `${displayHour}:${displayMinute} ${ampm}`,
+          startStr,
+          endStr,
+        });
+      }
+    }
+    return slots;
+  }, [selectedDate]);
+
+  const isSlotBooked = (slot: any) => {
+    const slotStart = new Date(slot.startStr);
+    const slotEnd = new Date(slot.endStr);
+    
+    return liveBookings.find((b) => {
+      const bStart = new Date(b.startTime);
+      const bEnd = new Date(b.endTime);
+      return (bStart < slotEnd && bEnd > slotStart);
+    });
+  };
+
+  const handleSlotClick = (slot: any) => {
+    setFormError(null);
+    setFormSuccess(false);
+
+    if (!bookingForm.startTime || (bookingForm.startTime && bookingForm.endTime)) {
+      // First click: Set From, clear To
+      setBookingForm({
+        ...bookingForm,
+        startTime: slot.startStr,
+        endTime: "",
+      });
+    } else {
+      // Second click: Set To
+      const startVal = new Date(bookingForm.startTime).getTime();
+      const clickedVal = new Date(slot.startStr).getTime();
+
+      if (clickedVal <= startVal) {
+        setBookingForm({
+          ...bookingForm,
+          startTime: slot.startStr,
+          endTime: "",
+        });
+      } else {
+        // Check for any booked slots in between
+        const startValDate = new Date(bookingForm.startTime);
+        const endValDate = new Date(slot.startStr);
+
+        const hasConflictInBetween = liveBookings.some((b) => {
+          const bStart = new Date(b.startTime);
+          const bEnd = new Date(b.endTime);
+          return bStart < endValDate && bEnd > startValDate;
+        });
+
+        if (hasConflictInBetween) {
+          setFormError("The selected range overlaps with an existing booking.");
+          return;
+        }
+
+        // Check for any driver double-bookings in this range
+        const hasDriverConflict = bookings.some((b) => {
+          if (b.status === "CANCELLED" || b.status === "COMPLETED") return false;
+          if (b.driverId !== activeDriver?.id) return false;
+          const bStart = new Date(b.startTime);
+          const bEnd = new Date(b.endTime);
+          
+          return bStart < endValDate && bEnd > startValDate;
+        });
+
+        if (hasDriverConflict) {
+          setFormError("The selected driver already has another booking during this time slot.");
+          return;
+        }
+
+        setBookingForm({
+          ...bookingForm,
+          endTime: slot.startStr,
+        });
+      }
+    }
+    setClickedBookedSlot(null);
+  };
+
+  const handleOpenBooking = () => {
+    setBookingForm({
+      vehicleId: vehicles[0]?.id || "",
+      startTime: "",
+      endTime: "",
+      pickup: "",
+      destination: "",
+      purpose: "Corporate Duty",
+      notes: "",
     });
     setFormError(null);
-    setIsFormOpen(true);
+    setFormSuccess(false);
+    setSelectedDate(new Date());
+    setLiveBookings([]);
+    setIsBookingOpen(true);
   };
 
-  const handleOpenEdit = (driver: User) => {
-    setDriverToEdit(driver);
-    setFormData({
-      name: driver.name || "",
-      email: driver.email || "",
-      employeeId: driver.employeeId || "",
-      phone: driver.phone || "",
-      licenseNumber: driver.licenseNumber || "",
-      licenseExpiry: driver.licenseExpiry ? new Date(driver.licenseExpiry).toISOString().split("T")[0] : "",
-      joiningDate: driver.joiningDate ? new Date(driver.joiningDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-      shiftStartTime: driver.shiftStartTime || "06:00 AM",
-      shiftEndTime: driver.shiftEndTime || "06:00 PM",
-      shiftDuration: driver.shiftDuration || "12 Hours",
-      experience: driver.experience || 0,
-      emergencyContact: driver.emergencyContact || "",
-      password: "", // Leave blank on edit
-    });
-    setFormError(null);
-    setIsFormOpen(true);
-  };
-
-  const handleOpenDetails = (driver: User & { assignedVehicles: Vehicle[] }) => {
-    setSelectedDriver(driver);
-    setIsDetailsOpen(true);
-  };
-
-  const handleOpenDelete = (driver: User & { assignedVehicles: Vehicle[] }) => {
-    setSelectedDriver(driver);
-    setIsDeleteOpen(true);
-  };
-
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleBookingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
+    if (!activeDriver) return;
+    if (!bookingForm.vehicleId) {
+      setFormError("Please select a vehicle.");
+      return;
+    }
+
+    if (!bookingForm.startTime || !bookingForm.endTime) {
+      setFormError("Start time and end time are required.");
+      return;
+    }
+
+    const start = new Date(bookingForm.startTime);
+    const end = new Date(bookingForm.endTime);
+
+    if (start >= end) {
+      setFormError("End time must be after start time.");
+      return;
+    }
+
+    // Allow start time to be up to 2 hours in the past
+    const graceTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    if (start < graceTime) {
+      setFormError("Booking start time cannot be in the past.");
+      return;
+    }
+
     startTransition(async () => {
-      let res;
-      if (driverToEdit) {
-        res = await updateDriver(driverToEdit.id, {
-          name: formData.name,
-          email: formData.email,
-          employeeId: formData.employeeId,
-          phone: formData.phone,
-          licenseNumber: formData.licenseNumber,
-          licenseExpiry: formData.licenseExpiry,
-          joiningDate: formData.joiningDate,
-          shiftStartTime: formData.shiftStartTime,
-          shiftEndTime: formData.shiftEndTime,
-          shiftDuration: formData.shiftDuration,
-          experience: Number(formData.experience),
-          emergencyContact: formData.emergencyContact,
-        });
-      } else {
-        res = await createDriver({
-          name: formData.name,
-          email: formData.email,
-          employeeId: formData.employeeId,
-          phone: formData.phone,
-          licenseNumber: formData.licenseNumber,
-          licenseExpiry: formData.licenseExpiry,
-          joiningDate: formData.joiningDate,
-          shiftStartTime: formData.shiftStartTime,
-          shiftEndTime: formData.shiftEndTime,
-          shiftDuration: formData.shiftDuration,
-          experience: Number(formData.experience),
-          emergencyContact: formData.emergencyContact,
-          password: formData.password || undefined,
-        });
-      }
+      const res = await bookCarAction({
+        vehicleId: bookingForm.vehicleId,
+        driverId: activeDriver.id,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        pickup: bookingForm.pickup,
+        destination: bookingForm.destination,
+        purpose: bookingForm.purpose,
+        notes: bookingForm.notes || undefined,
+        assignedBy: "ADMIN",
+        requestedBy: `ADMIN (${currentUserName})`,
+      });
 
       if (res.error) {
         setFormError(res.error);
       } else {
-        setIsFormOpen(false);
+        setFormSuccess(true);
+        setTimeout(() => {
+          setIsBookingOpen(false);
+          router.refresh();
+        }, 1500);
       }
     });
   };
 
-  const handleDeleteSubmit = () => {
-    if (!selectedDriver) return;
-    startTransition(async () => {
-      const res = await deleteDriver(selectedDriver.id);
-      if (res.error) {
-        alert(res.error);
-      } else {
-        setIsDeleteOpen(false);
-      }
-    });
-  };
-
-  // Filter drivers
-  const filteredDrivers = drivers.filter((d) => {
-    const matchesSearch =
-      d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.licenseNumber && d.licenseNumber.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesStatus = statusFilter === "ALL" || d.status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const getDriverStatusBadge = (status: DriverStatus) => {
-    switch (status) {
-      case "AVAILABLE":
-        return <Badge variant="success">{t("available")}</Badge>;
-      case "ON_TRIP":
-        return <Badge variant="info">{t("on_trip")}</Badge>;
-      case "ON_BREAK":
-        return <Badge variant="warning">{t("on_break")}</Badge>;
-      case "OFF_DUTY":
-        return <Badge variant="secondary">{t("off_duty")}</Badge>;
-      case "OFFLINE":
-      default:
-        return <Badge variant="danger">{t("offline")}</Badge>;
-    }
-  };
+  const currentAssignedCar = activeDriver?.assignedVehicle?.[0] || null;
 
   return (
     <div className="space-y-6">
-      {/* Title & Add Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("driver_manager")}</h2>
-          <p className="text-sm text-muted-foreground">{t("driver_desc")}</p>
-        </div>
-        <Button onClick={handleOpenAdd} className="sm:self-start">
-          <Plus className="h-4.5 w-4.5 mr-2" />
-          {t("add_driver")}
-        </Button>
+      {/* Title */}
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">Driver Management & Booking</h2>
+        <p className="text-sm text-muted-foreground">
+          View registered drivers, search booking schedules, and reserve vehicle slots on their behalf.
+        </p>
       </div>
 
-      {/* Filters & Search */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
-          <Input
-            placeholder={t("search_drivers")}
-            className="pl-10 bg-card"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {["ALL", "AVAILABLE", "ON_TRIP", "ON_BREAK", "OFF_DUTY", "OFFLINE"].map((status) => (
-            <Button
-              key={status}
-              variant={statusFilter === status ? "default" : "secondary"}
-              size="sm"
-              onClick={() => setStatusFilter(status)}
-              className="capitalize"
-            >
-              {status === "ALL" 
-                ? t("all_statuses") 
-                : status === "AVAILABLE" 
-                  ? t("available") 
-                  : status === "ON_TRIP" 
-                    ? t("on_trip") 
-                    : status === "ON_BREAK" 
-                      ? t("on_break") 
-                      : status === "OFF_DUTY" 
-                        ? t("off_duty") 
-                        : t("offline")}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {/* Drivers Table */}
-      <TableContainer>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t("driver_details")}</TableHead>
-            <TableHead>{t("employee_id")}</TableHead>
-            <TableHead>{t("contact")}</TableHead>
-            <TableHead>{t("status")}</TableHead>
-            <TableHead>{t("license")}</TableHead>
-            <TableHead>{t("shift")}</TableHead>
-            <TableHead>{t("current_assigned_car")}</TableHead>
-            <TableHead className="text-right">{t("actions")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredDrivers.map((driver) => {
-            return (
-              <TableRow key={driver.id}>
-                <TableCell>
-                  <div className="font-semibold text-foreground">{driver.name}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    Joined: {driver.joiningDate ? (mounted ? new Date(driver.joiningDate).toLocaleDateString() : "") : "N/A"}
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono text-xs">{driver.employeeId}</TableCell>
-                <TableCell>
-                  <div className="text-xs">{driver.email}</div>
-                  <div className="text-xs text-muted-foreground">{driver.phone}</div>
-                </TableCell>
-                <TableCell>
-                  {getDriverStatusBadge(driver.status)}
-                </TableCell>
-                <TableCell>
-                  <div className="text-xs font-mono">{driver.licenseNumber}</div>
-                  {driver.licenseExpiry && (
-                    <div className="text-[10px] text-muted-foreground">
-                      Expires: {mounted ? new Date(driver.licenseExpiry).toLocaleDateString() : ""}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="text-xs">
-                  <div className="font-medium text-foreground">
-                    {driver.shiftStartTime} - {driver.shiftEndTime}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-semibold">
-                    ({driver.shiftDuration})
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {driver.assignedVehicles.length > 0 ? (
-                    <div className="text-xs">
-                      <span className="font-semibold text-foreground">{driver.assignedVehicles[0].name}</span>
-                      <span className="block text-[10px] font-mono text-muted-foreground">{driver.assignedVehicles[0].vehicleNumber}</span>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{t("unassigned")}</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-1.5">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDetails(driver)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEdit(driver)}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => handleOpenDelete(driver)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-          {filteredDrivers.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                {t("no_drivers")}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </TableContainer>
-
-      {/* Add / Edit Form Dialog */}
-      <Dialog isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={driverToEdit ? "Edit Driver Profile" : "Register New Driver"}>
-        <form onSubmit={handleFormSubmit} className="space-y-4">
-          {formError && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600">
-              {formError}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Full Name</label>
-              <Input
-                placeholder="Kumar"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Email Address</label>
-              <Input
-                type="email"
-                placeholder="kumar@fleet.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Employee ID</label>
-              <Input
-                placeholder="DRV-001"
-                value={formData.employeeId}
-                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Phone Number</label>
-              <Input
-                placeholder="+919876543210"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          {!driverToEdit && (
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Password (Credentials login)</label>
-              <Input
-                type="password"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required={!driverToEdit}
-              />
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">License Number</label>
-              <Input
-                placeholder="DL-KUMAR12345"
-                value={formData.licenseNumber}
-                onChange={(e) => setFormData({ ...formData, licenseNumber: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">License Expiry Date</label>
-              <Input
-                type="date"
-                value={formData.licenseExpiry}
-                onChange={(e) => setFormData({ ...formData, licenseExpiry: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Joining Date</label>
-              <Input
-                type="date"
-                value={formData.joiningDate}
-                onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Experience (Years)</label>
-              <Input
-                type="number"
-                value={formData.experience}
-                onChange={(e) => setFormData({ ...formData, experience: Number(e.target.value) })}
-                required
-              />
-            </div>
-          </div>
-
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Emergency Contact (Name & Phone)</label>
+      {/* Main Content Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Drivers List (4 cols) */}
+        <div className="lg:col-span-4 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4.5 w-4.5 text-muted-foreground" />
             <Input
-              placeholder="Sunita (+919876543211)"
-              value={formData.emergencyContact}
-              onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
-              required
+              placeholder="Search driver by name or ID..."
+              className="pl-10 bg-card"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-border pt-4 mt-6">
-            <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Saving..." : "Save Profile"}
-            </Button>
-          </div>
-        </form>
-      </Dialog>
-
-      {/* Details View Dialog */}
-      <Dialog isOpen={isDetailsOpen} onClose={() => setIsDetailsOpen(false)} title="Driver Profile Diagnostics">
-        {selectedDriver && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-start border-b border-border pb-4">
-              <div>
-                <h3 className="text-xl font-bold">{selectedDriver.name}</h3>
-                <p className="text-sm text-muted-foreground">Employee ID: {selectedDriver.employeeId}</p>
-              </div>
-              <div className="flex flex-col items-end gap-1.5">
-                {getDriverStatusBadge(selectedDriver.status)}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex items-center gap-3">
-                <Award className="h-5 w-5 text-primary shrink-0" />
-                <div>
-                  <span className="block text-[10px] text-muted-foreground uppercase font-bold">Experience</span>
-                  <span className="text-sm">{selectedDriver.experience} Years</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Clock className="h-5 w-5 text-primary shrink-0" />
-                <div>
-                  <span className="block text-[10px] text-muted-foreground uppercase font-bold">Configured Shift</span>
-                  <span className="text-sm font-semibold">{selectedDriver.shiftStartTime} - {selectedDriver.shiftEndTime}</span>
-                  <span className="block text-[10px] text-muted-foreground">Duration: {selectedDriver.shiftDuration}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-border pt-4">
-              <h4 className="text-xs font-bold text-foreground mb-3 uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldAlert className="h-4.5 w-4.5 text-primary" /> Credentials & Licenses
-              </h4>
-              <div className="space-y-2 bg-muted/40 p-4 rounded-xl border border-border/40 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">License Number:</span>
-                  <span className="font-mono text-foreground font-semibold">{selectedDriver.licenseNumber || "N/A"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">License Expiry Date:</span>
-                  <span className="font-semibold text-foreground">
-                    {selectedDriver.licenseExpiry ? new Date(selectedDriver.licenseExpiry).toLocaleDateString("en-US", { dateStyle: "long" }) : "N/A"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Joining Date:</span>
-                  <span className="font-semibold text-foreground">
-                    {selectedDriver.joiningDate ? new Date(selectedDriver.joiningDate).toLocaleDateString("en-US", { dateStyle: "long" }) : "N/A"}
-                  </span>
-                </div>
-                <div className="flex justify-between border-t border-border/40 pt-2 mt-2">
-                  <span className="text-muted-foreground">Emergency Contact:</span>
-                  <span className="font-medium text-foreground">{selectedDriver.emergencyContact || "N/A"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Email:</span>
-                  <span className="font-medium text-foreground">{selectedDriver.email}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Phone:</span>
-                  <span className="font-medium text-foreground">{selectedDriver.phone || "N/A"}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-border pt-4">
-              <Button onClick={() => setIsDetailsOpen(false)}>Close diagnostics</Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} title="De-register Driver Account">
-        {selectedDriver && (
-          <div className="space-y-4">
-            <p className="text-sm text-foreground">
-              Are you sure you want to de-register driver <span className="font-bold text-primary">{selectedDriver.name}</span> ({selectedDriver.employeeId})?
-            </p>
-            <p className="text-xs text-red-500 font-semibold bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
-              Warning: This action will permanently delete the driver's corporate profile, credentials access, and any corresponding trip and shift histories.
-            </p>
-            <div className="flex justify-end gap-2 border-t border-border pt-4 mt-6">
-              <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleDeleteSubmit} disabled={isPending}>
-                {isPending ? "De-registering..." : "Confirm De-register"}
+          <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border">
+            <div className="p-3 bg-muted/20 font-bold text-xs uppercase text-muted-foreground tracking-wider flex justify-between items-center">
+              <span>Drivers ({filteredDrivers.length})</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-[10px] bg-primary/15 hover:bg-primary/25 text-primary hover:text-primary font-bold px-2 py-0.5 rounded-lg cursor-pointer"
+                onClick={() => router.push("/register")}
+              >
+                + Register Driver
               </Button>
             </div>
+            <div className="max-h-[550px] overflow-y-auto divide-y divide-border/60">
+              {filteredDrivers.map((driver) => {
+                const isSelected = activeDriver?.id === driver.id;
+                return (
+                  <button
+                    key={driver.id}
+                    onClick={() => {
+                      setSelectedDriver(driver);
+                      setFormError(null);
+                    }}
+                    className={`w-full text-left p-4 transition-all duration-150 flex items-center justify-between border-none ${
+                      isSelected
+                        ? "bg-primary/10 text-primary border-l-4 border-l-primary font-semibold"
+                        : "hover:bg-muted/30 text-foreground"
+                    }`}
+                  >
+                    <div>
+                      <span className="block text-sm">{driver.name}</span>
+                      <span className="block text-[10px] text-muted-foreground font-mono mt-0.5">{driver.employeeId}</span>
+                    </div>
+                    <ChevronRight className={`h-4.5 w-4.5 transition-transform ${isSelected ? 'translate-x-1 text-primary' : 'text-muted-foreground'}`} />
+                  </button>
+                );
+              })}
+              {filteredDrivers.length === 0 && (
+                <div className="p-8 text-center text-xs text-muted-foreground italic">
+                  No drivers found.
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </Dialog>
+        </div>
+
+        {/* Right Column: Driver Details & Bookings (8 cols) */}
+        <div className="lg:col-span-8 space-y-6">
+          {activeDriver ? (
+            <div className="space-y-6">
+              {/* Driver Summary Banner */}
+              <div className="p-6 border border-border bg-card rounded-xl space-y-4 glass">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Selected Driver</span>
+                    <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
+                      <UserCheck className="h-5.5 w-5.5 text-primary" /> {activeDriver.name}
+                    </h3>
+                    <p className="text-xs text-muted-foreground font-mono">{activeDriver.employeeId} &bull; {activeDriver.email}</p>
+                  </div>
+                  <Button onClick={handleOpenBooking} className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold shrink-0">
+                    <Plus className="h-4.5 w-4.5 mr-2" /> Book Slot on Behalf
+                  </Button>
+                </div>
+
+                {/* Permanent Vehicle Allocation Section */}
+                <div className="border-t border-border/30 pt-4 mt-2 space-y-2">
+                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Permanent Vehicle Allocation</span>
+                  {currentAssignedCar ? (
+                    <div className="flex items-center justify-between bg-primary/5 p-3 rounded-lg border border-primary/20">
+                      <div>
+                        <span className="text-xs text-foreground font-bold">{currentAssignedCar.name}</span>
+                        <span className="text-[10px] text-muted-foreground block font-mono ml-2">({currentAssignedCar.vehicleNumber})</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          startTransition(async () => {
+                            const res = await assignVehicleToDriver(currentAssignedCar.id, null);
+                            if (res.error) {
+                              alert(res.error);
+                            } else {
+                              router.refresh();
+                            }
+                          });
+                        }}
+                        className="h-8 text-xs border-red-500/30 text-red-500 hover:bg-red-500/10 cursor-pointer"
+                        disabled={isPending}
+                      >
+                        Unallocate Car
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <select
+                        id="assign-vehicle-select"
+                        className="flex h-9 w-full sm:w-64 rounded-lg border border-border bg-input px-3 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                        defaultValue=""
+                      >
+                        <option value="" disabled>-- Allocate Vehicle --</option>
+                        {vehicles.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name} ({v.vehicleNumber})
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          const selectEl = document.getElementById("assign-vehicle-select") as HTMLSelectElement;
+                          const vehicleId = selectEl?.value;
+                          if (!vehicleId) return;
+                          startTransition(async () => {
+                            const res = await assignVehicleToDriver(vehicleId, activeDriver.id);
+                            if (res.error) {
+                              alert(res.error);
+                            } else {
+                              router.refresh();
+                            }
+                          });
+                        }}
+                        className="bg-primary text-white font-semibold h-9 text-xs cursor-pointer"
+                        disabled={isPending}
+                      >
+                        Allocate Vehicle
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Upcoming Slots */}
+              <div className="border border-border rounded-xl bg-card overflow-hidden">
+                <div className="p-4 bg-muted/20 border-b border-border font-bold text-sm text-foreground flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  Upcoming & Active Bookings ({upcomingBookings.length})
+                </div>
+                <div className="p-4 space-y-3">
+                  {upcomingBookings.map((b) => (
+                    <div key={b.id} className="p-4 border border-border/60 rounded-xl bg-muted/10 glass space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="font-bold text-sm text-foreground">{b.vehicle?.name}</span>
+                          <span className="text-xs text-muted-foreground block font-mono">{b.vehicle?.vehicleNumber}</span>
+                        </div>
+                        <Badge variant="info" className="uppercase text-[9px]">{b.status}</Badge>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs border-t border-border/30 pt-2.5 mt-2.5">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" />
+                          <span>
+                            {new Date(b.startTime).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} - {new Date(b.endTime).toLocaleTimeString([], { timeStyle: "short" })}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5" />
+                          <span>{b.pickup} &rarr; {b.destination}</span>
+                        </div>
+                      </div>
+                      {b.notes && (
+                        <div className="bg-card/50 p-2 rounded border border-border/30 text-[11px] text-muted-foreground italic">
+                          Notes: {b.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {upcomingBookings.length === 0 && (
+                    <div className="text-center py-8 text-xs text-muted-foreground italic">
+                      No upcoming bookings scheduled for this driver.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Past Bookings */}
+              <div className="border border-border rounded-xl bg-card overflow-hidden">
+                <div className="p-4 bg-muted/20 border-b border-border font-bold text-sm text-foreground">
+                  Past Booking History ({pastBookings.length})
+                </div>
+                <div className="p-4 space-y-3">
+                  {pastBookings.map((b) => (
+                    <div key={b.id} className="p-4 border border-border/40 rounded-xl bg-muted/5 space-y-2 opacity-85">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="font-medium text-sm text-foreground">{b.vehicle?.name}</span>
+                          <span className="text-xs text-muted-foreground block font-mono">{b.vehicle?.vehicleNumber}</span>
+                        </div>
+                        <Badge variant="secondary" className="uppercase text-[9px]">{b.status}</Badge>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs border-t border-border/20 pt-2 mt-2">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Clock className="h-3.5 w-3.5" />
+                          <span>
+                            {new Date(b.startTime).toLocaleString([], { dateStyle: "short", timeStyle: "short" })} - {new Date(b.endTime).toLocaleTimeString([], { timeStyle: "short" })}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5" />
+                          <span>{b.pickup} &rarr; {b.destination}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {pastBookings.length === 0 && (
+                    <div className="text-center py-8 text-xs text-muted-foreground italic">
+                      No historical bookings logged.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl bg-card">
+              Please select a driver from the list to view their schedule.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Book Slot on Behalf Modal */}
+      {activeDriver && (
+        <Dialog isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} title={`Book Slot on Behalf of ${activeDriver.name}`}>
+          <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
+            {formError && (
+              <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600">
+                {formError}
+              </div>
+            )}
+            {formSuccess && (
+              <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-3 text-xs text-green-600 flex items-center gap-2">
+                <CheckCircle2 className="h-4.5 w-4.5" /> Booking Created Successfully!
+              </div>
+            )}
+
+            {/* Select Vehicle dropdown */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground block">Select Vehicle</label>
+              <select
+                className="flex h-10 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50"
+                value={bookingForm.vehicleId}
+                onChange={(e) => {
+                  setBookingForm({ ...bookingForm, vehicleId: e.target.value, startTime: "", endTime: "" });
+                  setClickedBookedSlot(null);
+                }}
+                required
+              >
+                <option value="" disabled>-- Select Vehicle --</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.vehicleNumber}) &bull; {v.status}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date and Time slots selection */}
+            {bookingForm.vehicleId && (
+              <>
+                <div className="space-y-2 border-t border-border/30 pt-4">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block">Select Date</span>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none items-center">
+                    {windowDates.map((date, idx) => {
+                      const isSelected = date.toDateString() === selectedDate.toDateString();
+                      const today = new Date();
+                      const isToday = date.toDateString() === today.toDateString();
+                      const isPast = date < today && !isToday;
+                      const monthStr = date.toLocaleString('default', { month: 'short' });
+                      const dayNum = date.getDate();
+                      const dayName = date.toLocaleString('default', { weekday: 'short' }).toUpperCase();
+
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDate(date);
+                            setClickedBookedSlot(null);
+                          }}
+                          className={cn(
+                            "flex flex-col items-center justify-between p-2 min-w-[55px] h-[70px] rounded-xl border transition-all cursor-pointer shrink-0 text-xs",
+                            isSelected
+                              ? "border-primary bg-primary/10 text-primary font-bold shadow-sm"
+                              : isPast
+                              ? "border-border/30 bg-muted/5 text-muted-foreground/40 cursor-not-allowed"
+                              : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/30"
+                          )}
+                        >
+                          <span className="text-[8px] uppercase font-bold tracking-wider">{monthStr}</span>
+                          <span className="text-base font-extrabold">{dayNum}</span>
+                          <span className="text-[8px] font-semibold">{isToday ? "TODAY" : dayName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* From & To Preview */}
+                <div className="grid grid-cols-2 gap-4 border-t border-border/30 pt-4">
+                  <div className="relative border border-border bg-card rounded-xl p-3 flex flex-col justify-between shadow-sm">
+                    <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">From</span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Clock className="h-4 w-4 text-muted-foreground/60" />
+                      <span className="text-sm font-extrabold text-foreground">
+                        {bookingForm.startTime ? formatTo12Hour(bookingForm.startTime) : "HH:MM"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative border border-border bg-card rounded-xl p-3 flex flex-col justify-between shadow-sm">
+                    <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">To</span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Clock className="h-4 w-4 text-muted-foreground/60" />
+                      <span className="text-sm font-extrabold text-foreground">
+                        {bookingForm.endTime ? formatTo12Hour(bookingForm.endTime) : "HH:MM"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clear time selection */}
+                {(bookingForm.startTime || bookingForm.endTime) && (
+                  <div className="flex justify-end pt-1">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setBookingForm({
+                          ...bookingForm,
+                          startTime: "",
+                          endTime: "",
+                        });
+                        setClickedBookedSlot(null);
+                      }}
+                      className="text-[9px] h-6 px-2 font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                    >
+                      Clear Time Selection
+                    </Button>
+                  </div>
+                )}
+
+                {/* Time Slots Grid */}
+                <div className="space-y-2 border-t border-border/30 pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Time Slot</span>
+                    <span className="text-[9px] text-muted-foreground italic">
+                      {slotsList.length} slots available
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    {slotsList.map((slot, index) => {
+                      const booking = isSlotBooked(slot);
+                      const isBooked = !!booking;
+                      const slotStart = new Date(slot.startStr).getTime();
+                      const isSelected = bookingForm.startTime && bookingForm.endTime
+                        ? (slotStart >= new Date(bookingForm.startTime).getTime() && slotStart <= new Date(bookingForm.endTime).getTime())
+                        : (bookingForm.startTime === slot.startStr || bookingForm.endTime === slot.startStr);
+
+                      return (
+                        <button
+                          key={index}
+                          type="button"
+                          title={isBooked ? `Booked by ${booking.driver?.name || booking.requestedBy || 'Driver'}` : undefined}
+                          onClick={() => {
+                            if (isBooked) {
+                              setClickedBookedSlot(booking);
+                            } else {
+                              handleSlotClick(slot);
+                            }
+                          }}
+                          className={cn(
+                            "p-1.5 rounded-lg border flex flex-col items-center justify-center text-center cursor-pointer transition-all h-[45px] text-[10px]",
+                            isBooked
+                              ? "bg-red-600/80 border-red-700/30 text-white hover:bg-red-600"
+                              : isSelected
+                                ? "border-primary bg-primary/10 text-primary font-bold shadow-sm"
+                                : "border-border bg-muted/10 hover:bg-muted/30 text-foreground"
+                          )}
+                        >
+                          {slot.label}
+                          {isBooked && <span className="text-[7px] mt-0.5 opacity-80">Booked</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {clickedBookedSlot && (
+                    <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg text-[11px] text-foreground space-y-1 mt-2">
+                      <h4 className="font-bold text-red-500 flex items-center gap-1">🚨 Slot Reservation Details</h4>
+                      <div className="grid grid-cols-2 gap-2 pt-0.5">
+                        <div>
+                          <span className="text-muted-foreground block text-[9px]">Booked By</span>
+                          <span className="font-semibold">{clickedBookedSlot.driver?.name || clickedBookedSlot.requestedBy || "N/A"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[9px]">Schedule</span>
+                          <span className="font-semibold">
+                            {new Date(clickedBookedSlot.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {new Date(clickedBookedSlot.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Form fields */}
+                <form onSubmit={handleBookingSubmit} className="space-y-4 border-t border-border/30 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Pickup Location</label>
+                      <Input
+                        placeholder="Base Depot / Airport"
+                        value={bookingForm.pickup}
+                        onChange={(e) => setBookingForm({ ...bookingForm, pickup: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Destination Location</label>
+                      <Input
+                        placeholder="Hotel / Corporate Office"
+                        value={bookingForm.destination}
+                        onChange={(e) => setBookingForm({ ...bookingForm, destination: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Purpose</label>
+                    <Input
+                      placeholder="Corporate Duty"
+                      value={bookingForm.purpose}
+                      onChange={(e) => setBookingForm({ ...bookingForm, purpose: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Notes (Optional)</label>
+                    <textarea
+                      className="flex min-h-[50px] w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="Add notes for the trip..."
+                      value={bookingForm.notes}
+                      onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 border-t border-border pt-4">
+                    <Button type="button" variant="outline" onClick={() => setIsBookingOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isPending} className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold">
+                      {isPending ? "Booking..." : "Confirm Booking"}
+                    </Button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

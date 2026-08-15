@@ -10,6 +10,8 @@ export default async function DriverLayout({
 }) {
   const session = await auth();
 
+  console.log("DRIVER_LAYOUT_SESSION: " + JSON.stringify(session));
+
   if (!session?.user || session.user.role !== "DRIVER") {
     redirect("/login");
   }

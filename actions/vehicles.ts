@@ -18,7 +18,6 @@ export async function createVehicle(data: {
   serviceDueDate: string;
   odometer: number;
   status: VehicleStatus;
-  currentDriverId?: string | null;
   carType?: string;
   ownershipType?: string;
   notes?: string;
@@ -39,13 +38,14 @@ export async function createVehicle(data: {
         serviceDueDate: new Date(data.serviceDueDate),
         odometer: Number(data.odometer),
         status: data.status,
-        currentDriverId: data.currentDriverId || null,
         carType: data.carType || null,
         ownershipType: data.ownershipType || null,
         notes: data.notes || null,
       },
     });
     revalidatePath("/admin/vehicles");
+    revalidatePath("/driver/available-vehicles");
+    revalidatePath("/admin");
     return { success: true };
   } catch (error: any) {
     console.error("Create vehicle error:", error);
@@ -69,7 +69,6 @@ export async function updateVehicle(
     serviceDueDate: string;
     odometer: number;
     status: VehicleStatus;
-    currentDriverId?: string | null;
     carType?: string;
     ownershipType?: string;
     notes?: string;
@@ -92,13 +91,14 @@ export async function updateVehicle(
         serviceDueDate: new Date(data.serviceDueDate),
         odometer: Number(data.odometer),
         status: data.status,
-        currentDriverId: data.currentDriverId || null,
         carType: data.carType || null,
         ownershipType: data.ownershipType || null,
         notes: data.notes || null,
       },
     });
     revalidatePath("/admin/vehicles");
+    revalidatePath("/driver/available-vehicles");
+    revalidatePath("/admin");
     return { success: true };
   } catch (error: any) {
     console.error("Update vehicle error:", error);
@@ -112,9 +112,37 @@ export async function deleteVehicle(id: string) {
       where: { id },
     });
     revalidatePath("/admin/vehicles");
+    revalidatePath("/driver/available-vehicles");
+    revalidatePath("/admin");
     return { success: true };
   } catch (error: any) {
     console.error("Delete vehicle error:", error);
     return { error: error.message || "Failed to delete vehicle" };
+  }
+}
+
+export async function assignVehicleToDriver(vehicleId: string, driverId: string | null) {
+  try {
+    if (driverId) {
+      // Clear any other vehicle assigned to this driver
+      await db.vehicle.updateMany({
+        where: { assignedDriverId: driverId },
+        data: { assignedDriverId: null },
+      });
+    }
+
+    // Assign the selected vehicle
+    await db.vehicle.update({
+      where: { id: vehicleId },
+      data: { assignedDriverId: driverId },
+    });
+
+    revalidatePath("/admin/drivers");
+    revalidatePath("/driver");
+    revalidatePath("/admin");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Assign vehicle to driver error:", error);
+    return { error: error.message || "Failed to assign vehicle." };
   }
 }

@@ -18,7 +18,7 @@ export default async function WeeklyLogPage() {
   });
 
   if (!driver) {
-    redirect("/login");
+    redirect("/login?error=SessionExpired");
   }
 
   const logs = await db.weeklyLog.findMany({
