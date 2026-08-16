@@ -2,7 +2,7 @@ import React from "react";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { DriverDashboardClient } from "@/components/drivers/driver-dashboard-client";
+import { DriverPortalClient } from "@/components/drivers/driver-portal-client";
 
 export const revalidate = 0;
 
@@ -61,14 +61,22 @@ export default async function DriverDashboard() {
     },
   });
 
+  // Find all weekly logs
+  const logs = await db.weeklyLog.findMany({
+    where: { driverId: driver.id },
+    orderBy: { uploadedAt: "desc" },
+  });
+
   return (
-    <DriverDashboardClient
+    <DriverPortalClient
       driver={driver}
       activeShift={null}
       assignedVehicle={assignedVehicle}
       vehicles={vehicles}
       bookings={bookings}
       activeTrip={activeTrip}
+      logs={logs}
     />
   );
 }
+

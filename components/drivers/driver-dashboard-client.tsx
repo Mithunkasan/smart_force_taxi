@@ -150,22 +150,7 @@ export function DriverDashboardClient({
 
 
 
-  // Status labels
-  const getDriverStatusLabel = (status: string) => {
-    switch (status) {
-      case "AVAILABLE":
-        return <Badge variant="success">{t("available")}</Badge>;
-      case "ON_TRIP":
-        return <Badge variant="info">{t("on_trip_busy")}</Badge>;
-      case "ON_BREAK":
-        return <Badge variant="warning">{t("on_break")}</Badge>;
-      case "OFF_DUTY":
-        return <Badge variant="secondary">{t("off_duty")}</Badge>;
-      case "OFFLINE":
-      default:
-        return <Badge variant="danger">{t("offline")}</Badge>;
-    }
-  };
+
 
 
 
@@ -401,10 +386,6 @@ export function DriverDashboardClient({
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">{t("btn_driver_portal")}</h2>
           <p className="text-sm text-muted-foreground">{t("manage_assignments")}</p>
-          <div className="flex items-center gap-2 mt-3">
-            <span className="text-xs text-muted-foreground">{t("status")}:</span>
-            {getDriverStatusLabel(driver.status)}
-          </div>
         </div>
         <div className="text-xs space-y-2 md:border-l md:border-border/40 md:pl-6">
           <div className="flex items-center gap-1.5"><span className="text-muted-foreground font-semibold">Driver Name:</span> <span className="font-bold text-foreground">{driver.name}</span></div>
