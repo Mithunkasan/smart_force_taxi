@@ -2,21 +2,19 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, Route, Truck, Wrench, CalendarCheck } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarCheck } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useTranslation } from "@/components/layout/language-provider";
+import { useDriverTab, DriverTab } from "@/components/drivers/driver-portal-context";
 
 export function DriverNavbar() {
   const { t } = useTranslation();
-  const pathname = usePathname();
+  const { activeTab, setActiveTab } = useDriverTab();
 
   const navLinks = [
-    { href: "/driver", label: t("dashboard"), icon: LayoutDashboard },
-    { href: "/driver/trip", label: t("trips"), icon: Route },
-    { href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
-    { href: "/driver/issues", label: t("report_issue"), icon: Wrench },
-    { href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
+    { id: "dashboard" as const, href: "/driver", label: t("dashboard"), icon: LayoutDashboard },
+    { id: "vehicles" as const, href: "/driver/available-vehicles", label: t("vehicles"), icon: Truck },
+    { id: "weekly-log" as const, href: "/driver/weekly-log", label: t("weekly_log"), icon: CalendarCheck },
   ];
 
   return (
@@ -24,12 +22,16 @@ export function DriverNavbar() {
       {/* Desktop Top Sub-Navbar */}
       <nav className="hidden md:flex w-full items-center gap-2 border-b border-border/60 bg-card px-6 py-2">
         {navLinks.map((link) => {
-          const isActive = pathname === link.href;
+          const isActive = activeTab === link.id;
           const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveTab(link.id);
+              }}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all border border-transparent hover:bg-muted/30 cursor-pointer",
                 isActive 
@@ -47,12 +49,16 @@ export function DriverNavbar() {
       {/* Mobile Bottom Navigation Bar */}
       <nav className="md:hidden flex fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border justify-around items-center z-50 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-safe">
         {navLinks.map((link) => {
-          const isActive = pathname === link.href;
+          const isActive = activeTab === link.id;
           const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveTab(link.id);
+              }}
               className={cn(
                 "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-all text-center gap-0.5 relative cursor-pointer",
                 isActive 
@@ -74,3 +80,4 @@ export function DriverNavbar() {
     </>
   );
 }
+
